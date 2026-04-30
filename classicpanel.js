@@ -1,4 +1,4 @@
-// Prosty Panel — classicpanel.js (Z natywnym śledzeniem języka klawiatury)
+// Prosty Panel — classicpanel.js (Z natywnym śledzeniem języka klawiatury i usuniętym duchem menu)
 
 import GObject from 'gi://GObject';
 import St      from 'gi://St';
@@ -134,7 +134,6 @@ function buildExtraStatus(host) {
         }
     };
 
-    // NATYWNE OBSŁUGIWANIE KLAWIATURY
     const syncKbd = () => {
         if (host._panelDestroyed) return;
         const kbd = Main.panel.statusArea.keyboard;
@@ -147,7 +146,6 @@ function buildExtraStatus(host) {
 
         if (!kbdSourceSignal) {
             try {
-                // Podłączamy się bezpośrednio do menedżera języków GNOME
                 const ism = Keyboard.getInputSourceManager();
                 if (ism) {
                     const updateLabel = () => {
@@ -156,13 +154,11 @@ function buildExtraStatus(host) {
                             kbdLabel.set_text(ism.currentSource.shortName);
                         }
                     };
-                    // Nasłuchujemy sygnału systemowego o zmianie języka
                     kbdSourceSignal = ism.connect('current-source-changed', updateLabel);
                     host._signalIds.push([ism, kbdSourceSignal]);
                     updateLabel();
                 }
             } catch (e) {
-                // Fallback: jeśli GNOME zmieni API, skanuj label co pół sekundy
                 console.log('[Prosty Panel] Użyto fallbacku dla klawiatury', e);
                 kbdSourceSignal = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
                     if (host._panelDestroyed) return GLib.SOURCE_REMOVE;
@@ -269,7 +265,7 @@ export const BottomTaskbar = GObject.registerClass({
         const addSpacerMenuItem = (label, cmd, callback) => {
             const item = new PopupMenu.PopupMenuItem(label);
             item.connect('activate', () => {
-                this._spacerMenu.close();
+                // FIX: Usunięto this._spacerMenu.close() – system zamyka menu natywnie
                 if (cmd) Util.spawnCommandLine(cmd);
                 if (callback) callback();
             });
@@ -340,7 +336,6 @@ export const BottomTaskbar = GObject.registerClass({
         this._buttons.clear();
         for (const [obj, id] of this._signalIds) { 
             try { 
-                // Specjalne zabezpieczenie dla timeoutów dodanych w try-catch fallbacku
                 if (obj === null) GLib.source_remove(id);
                 else obj.disconnect(id); 
             } catch(e) {} 
