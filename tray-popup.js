@@ -1,4 +1,4 @@
-// Prosty Panel — tray-popup.js (final)
+// Prosty Panel — tray-popup.js (final z zabezpieczeniem animacji destrukcji)
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -228,15 +228,24 @@ export function closeTrayPopup(host) {
 
     if (host._openMenus) host._openMenus.delete(popup);
 
-    popup.ease({
-        opacity: 0,
-        duration: 150,
-        mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-        onStopped: () => {
-            if (popup.get_parent()) Main.uiGroup.remove_child(popup);
-            popup.destroy();
-        },
-    });
+    // Jeśli pasek jest niszczony lub popup nie jest na scenie - usuń natychmiast
+    if (host._panelDestroyed || !popup.get_stage()) {
+        popup.remove_all_transitions();
+        if (popup.get_parent()) Main.uiGroup.remove_child(popup);
+        popup.destroy();
+    } else {
+        // W normalnych warunkach zrób płynną animację
+        popup.ease({
+            opacity: 0,
+            duration: 150,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            onStopped: () => {
+                popup.remove_all_transitions();
+                if (popup.get_parent()) Main.uiGroup.remove_child(popup);
+                popup.destroy();
+            },
+        });
+    }
 }
 
 function _getBarFor(sourceActor) {
