@@ -1,4 +1,4 @@
-// Prosty Panel — appbutton.js (Wersja z inteligentnym przeciąganiem i skrótami ŚPM)
+// Prosty Panel — appbutton.js (Wersja z pełnym podglądem okien i zamykaniem)
 
 import GObject  from 'gi://GObject';
 import St       from 'gi://St';
@@ -87,17 +87,15 @@ class AppButton extends St.Button {
             return Clutter.EVENT_STOP;
         }
         
-        // Środkowy przycisk (2) - nowe okno lub zamknięcie (jeśli wciśnięty Shift)
+        // Środkowy przycisk (2) - nowe okno lub zamknięcie
         if (btn === 2) {
             const state = ev.get_state();
             const isShift = (state & Clutter.ModifierType.SHIFT_MASK) !== 0;
             
             if (isShift) {
-                // Shift + ŚPM = Zamknij wszystkie okna
                 const wins = this._app.get_windows();
                 for (const w of wins) w.delete(global.get_current_time());
             } else {
-                // Samo ŚPM = Otwórz nowe okno
                 if (this._app.can_open_new_window?.()) {
                     this._app.open_new_window(-1);
                 } else {
@@ -148,7 +146,6 @@ class AppButton extends St.Button {
         const favBtns = buttons.filter(b => favIds.has(b.app.get_id()));
         const runBtns = buttons.filter(b => !favIds.has(b.app.get_id()));
 
-        // SEGREGACJA: Pinned zostają w Pinned, Running zostają w Running
         let targetBtns = this._isFavorite ? favBtns : runBtns;
         let baseIndex = this._isFavorite ? 0 : favBtns.length;
 
@@ -244,19 +241,53 @@ class AppButton extends St.Button {
     _onHover() {
         if (this._hideTimerId) { GLib.source_remove(this._hideTimerId); this._hideTimerId = null; }
         if (this._hoverTimeout) { GLib.source_remove(this._hoverTimeout); this._hoverTimeout = null; }
+        
         if (this.hover) {
             this._hoverTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, HOVER_DELAY_MS, () => {
                 this._hoverTimeout = null;
-                const wins = this._app.get_windows();
-                wins.length > 0 ? this._showWindowPreview(wins) : this._showTooltip();
+                this._refreshPreview(); // Używamy nowej metody odświeżania
                 return GLib.SOURCE_REMOVE;
             });
         } else {
             this._hideTimerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, HIDE_DELAY_MS, () => {
-                this._hideTimerId = null; if (this.hover || (this._previewPopup && this._previewPopup.hover)) return GLib.SOURCE_REMOVE;
-                this._hideTooltip(); this._hideWindowPreview(); return GLib.SOURCE_REMOVE;
+                this._hideTimerId = null; 
+                if (this.hover || (this._previewPopup && this._previewPopup.hover)) return GLib.SOURCE_REMOVE;
+                this._hideTooltip(); 
+                this._hideWindowPreview(); 
+                return GLib.SOURCE_REMOVE;
             });
         }
+    }
+
+    _refreshPreview() {
+        const wins = this._app.get_windows();
+        if (wins.length > 0) {
+            // Jeśli preview już jest, tylko je zaktualizuj, inaczej pokaż nowe
+            this._showWindowPreview(wins);
+            
+            // Podpinamy się pod zmiany okien, żeby odświeżyć preview gdy otworzysz nowe okno
+            if (!this._winSignalId) {
+                this._winSignalId = this._app.connect('windows-changed', () => {
+                    if (this.hover && this._previewPopup) {
+                        this._showWindowPreview(this._app.get_windows());
+                    }
+                });
+            }
+        } else {
+            this._showTooltip();
+        }
+    }
+
+    _hideWindowPreview() {
+        if (this._winSignalId) {
+            this._app.disconnect(this._winSignalId);
+            this._winSignalId = null;
+        }
+        const popup = this._previewPopup; 
+        if (!popup) return; 
+        this._previewPopup = null;
+        if (this._previewHoverTimer) { GLib.source_remove(this._previewHoverTimer); this._previewHoverTimer = null; }
+        popup.ease({ opacity: 0, duration: 100, mode: Clutter.AnimationMode.EASE_OUT_QUAD, onStopped: () => { if (popup.get_parent()) Main.uiGroup.remove_child(popup); popup.destroy(); } });
     }
 
     _showTooltip() {
@@ -274,6 +305,9 @@ class AppButton extends St.Button {
 
     _hideTooltip() { this._tooltip.ease({ opacity: 0, duration: 80 }); }
 
+    // =========================================================
+    //   NOWY, POPRAWIONY WYGLĄD PODGLĄDU OKIEN
+    // =========================================================
     _showWindowPreview(wins) {
         if (this._previewPopup) this._hideWindowPreview();
         const popup = new St.BoxLayout({ style_class : 'tb-preview-popup', reactive : true, track_hover : true, y_align : Clutter.ActorAlign.CENTER });
@@ -282,18 +316,69 @@ class AppButton extends St.Button {
         for (const win of wins) {
             const cell = new St.Button({ style_class : 'tb-preview-cell', reactive : true, can_focus : true, track_hover : true });
             const wrapper = new St.Widget({ layout_manager : new Clutter.BinLayout(), width : PREVIEW_W, height : PREVIEW_H });
+            
+            // 1. Miniatura okna (wyśrodkowana w pionie i poziomie dla lepszego wypełnienia)
             const actor = win.get_compositor_private();
             if (actor) {
                 const [winW, winH] = win.get_frame_rect() ? [win.get_frame_rect().width, win.get_frame_rect().height] : actor.get_size();
-                const scale = Math.min(1.0, (PREVIEW_W - 8)  / Math.max(winW, 1), (PREVIEW_H - 28) / Math.max(winH, 1));
-                const clone = new Clutter.Clone({ source: actor, width: winW * scale, height: winH * scale, x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.END, x_expand: true, y_expand: true });
+                const scale = Math.min(1.0, (PREVIEW_W - 8) / Math.max(winW, 1), (PREVIEW_H - 30) / Math.max(winH, 1));
+                const clone = new Clutter.Clone({ 
+                    source: actor, 
+                    width: winW * scale, 
+                    height: winH * scale, 
+                    x_align: Clutter.ActorAlign.CENTER, 
+                    y_align: Clutter.ActorAlign.CENTER, // Wyśrodkowane
+                    x_expand: true, 
+                    y_expand: true 
+                });
                 wrapper.add_child(clone);
             }
-            const title = new St.Label({ text: win.get_title() || this._app.get_name(), style_class: 'tb-preview-title', x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.START });
+
+            // 2. Mądry Tytuł (Nazwa Programu - Tytuł Okna) z przycinaniem
+            const appName = this._app.get_name();
+            const winTitle = win.get_title();
+            const fullTitle = (winTitle && winTitle !== appName) ? `${appName} - ${winTitle}` : appName;
+
+            const title = new St.Label({ 
+                text: fullTitle, 
+                style_class: 'tb-preview-title', 
+                x_align: Clutter.ActorAlign.CENTER, 
+                y_align: Clutter.ActorAlign.START,
+                x_expand: true
+            });
+            title.clutter_text.ellipsize = 3; // Pango.EllipsizeMode.END - Ucina za długi tekst ("...")
             wrapper.add_child(title);
+
+            // 3. Guzik zamykania (X)
+            const closeBtn = new St.Button({
+                style_class: 'tb-preview-close-btn',
+                child: new St.Icon({ icon_name: 'window-close-symbolic', icon_size: 14 }),
+                x_align: Clutter.ActorAlign.END,
+                y_align: Clutter.ActorAlign.START,
+                x_expand: true,
+                y_expand: true,
+                reactive: true,
+                can_focus: true,
+                // Prosty inline-CSS gwarantujący, że guzik zawsze wygląda dobrze:
+                style: 'background-color: rgba(0,0,0,0.6); border-radius: 99px; padding: 4px; margin: 2px;'
+            });
+            
+            closeBtn.connect('clicked', () => { 
+                win.delete(global.get_current_time()); 
+                this._hideWindowPreview(); 
+            });
+            wrapper.add_child(closeBtn);
+
             cell.set_child(wrapper);
             cell.connect('clicked', () => { this._hideWindowPreview(); Main.activateWindow(win); });
-            cell.connect('button-press-event', (_a, ev) => { if (ev.get_button() === 2) { win.delete(global.get_current_time()); this._hideWindowPreview(); return Clutter.EVENT_STOP; } return Clutter.EVENT_PROPAGATE; });
+            cell.connect('button-press-event', (_a, ev) => { 
+                if (ev.get_button() === 2) { 
+                    win.delete(global.get_current_time()); 
+                    this._hideWindowPreview(); 
+                    return Clutter.EVENT_STOP; 
+                } 
+                return Clutter.EVENT_PROPAGATE; 
+            });
             popup.add_child(cell);
         }
 
