@@ -1,4 +1,4 @@
-// Prosty Panel — appbutton.js (Wersja Ostateczna ze Stabilnym Podglądem)
+// Prosty Panel — appbutton.js (Wersja Ostateczna i Stabilna)
 
 import GObject  from 'gi://GObject';
 import St       from 'gi://St';
@@ -117,8 +117,13 @@ class AppButton extends St.Button {
         this._dragActor = new Clutter.Clone({ source: this, width: this.width, height: this.height, opacity: 200 });
         Main.uiGroup.add_child(this._dragActor);
         this._dragActor.set_position(mx - (this.width / 2), my - (this.height / 2));
+        
         if (!this._dropMarker) {
-            this._dropMarker = new St.Widget({ style_class: 'tb-drop-marker', background_color: new Clutter.Color({ red: 255, green: 255, blue: 255, alpha: 220 }) });
+            // FIX: Bezpieczny CSS zamiast Clutter.Color
+            this._dropMarker = new St.Widget({ 
+                style_class: 'tb-drop-marker', 
+                style: 'background-color: rgba(255, 255, 255, 0.86);' 
+            });
             this._dropMarker.hide();
         }
         Main.uiGroup.add_child(this._dropMarker);
@@ -205,22 +210,28 @@ class AppButton extends St.Button {
         this._menu.removeAll();
         const app = this._app; const wins = app.get_windows(); const isRun = wins.length > 0;
         const favs = AppFavorites.getAppFavorites(); const appId = app.get_id(); const isFav = favs.isFavorite(appId);
+        
+        // FIX: Usunięto zduplikowane this._menu.close() – GNOME zamyka menu automatycznie po aktywacji
         if (isRun) {
             const openItem = new PopupMenu.PopupMenuItem('Otwórz');
-            openItem.connect('activate', () => { this._menu.close(); Main.activateWindow(wins[0]); });
+            openItem.connect('activate', () => { Main.activateWindow(wins[0]); });
             this._menu.addMenuItem(openItem);
         }
+        
         const newItem = new PopupMenu.PopupMenuItem('Nowe okno');
-        newItem.connect('activate', () => { this._menu.close(); app.can_open_new_window?.() ? app.open_new_window(-1) : app.activate(); });
+        newItem.connect('activate', () => { app.can_open_new_window?.() ? app.open_new_window(-1) : app.activate(); });
         this._menu.addMenuItem(newItem);
+        
         this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        
         const pinItem = new PopupMenu.PopupMenuItem(isFav ? 'Odepnij' : 'Przypnij');
-        pinItem.connect('activate', () => { this._menu.close(); isFav ? favs.removeFavorite(appId) : favs.addFavorite(appId); });
+        pinItem.connect('activate', () => { isFav ? favs.removeFavorite(appId) : favs.addFavorite(appId); });
         this._menu.addMenuItem(pinItem);
+        
         if (isRun) {
             this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
             const closeItem = new PopupMenu.PopupMenuItem('Zamknij');
-            closeItem.connect('activate', () => { this._menu.close(); for (const w of app.get_windows()) w.delete(global.get_current_time()); });
+            closeItem.connect('activate', () => { for (const w of app.get_windows()) w.delete(global.get_current_time()); });
             this._menu.addMenuItem(closeItem);
         }
         openMenuAboveBar(this._menu, this, 4, null, true);
@@ -252,7 +263,6 @@ class AppButton extends St.Button {
     _refreshPreview() {
         if (this._isDestroyed) return;
         
-        // 1. POBIERAMY TYLKO OKNA Z AKTUALNEGO PULPITU
         const ws = global.workspace_manager.get_active_workspace();
         const wins = this._app.get_windows().filter(w => w.get_workspace() === ws);
         
@@ -275,7 +285,6 @@ class AppButton extends St.Button {
     _showWindowPreview(wins) {
         if (this._isDestroyed) return;
 
-        // 2. BLOKOWANIE INTELLIHIDE PRZY TWORZENIU POPUPU
         if (!this._previewPopup) {
             this._emitBarSignal('menu-opened');
         } else {
@@ -315,7 +324,6 @@ class AppButton extends St.Button {
             if (this._isDestroyed || !this._previewPopup) return GLib.SOURCE_REMOVE;
             const [ax, ay] = this.get_transformed_position();
             
-            // 3. POPRAWNE POBIERANIE WYMIARÓW PRZED RYSOWANIEM
             const [minW, pw] = popup.get_preferred_width(-1);
             const [minH, ph] = popup.get_preferred_height(-1);
             
@@ -328,7 +336,6 @@ class AppButton extends St.Button {
             return GLib.SOURCE_REMOVE;
         });
 
-        // OSTATECZNY FIX DLA "already disposed"
         popup.connect('notify::hover', () => {
             if (this._isDestroyed || !this._previewPopup || this._previewPopup !== popup) return;
             try {
@@ -351,7 +358,6 @@ class AppButton extends St.Button {
         const popup = this._previewPopup; 
         if (!popup) return; 
 
-        // 4. ODBLOKOWANIE INTELLIHIDE
         this._emitBarSignal('menu-closed');
 
         this._previewPopup = null;
@@ -404,7 +410,6 @@ class AppButton extends St.Button {
         if (this._menu) this._menu.destroy();
         
         if (this._previewPopup) {
-            // 5. ZWALNIANIE BLOKADY PRZED BRUTALNYM USUNIĘCIEM
             this._emitBarSignal('menu-closed');
             
             this._previewPopup.remove_all_transitions();
