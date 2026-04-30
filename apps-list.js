@@ -1,4 +1,4 @@
-// Prosty Panel — apps-list.js (Z obsługą zmiany kolejności uruchomionych)
+// Prosty Panel — apps-list.js (Z obsługą natywnego Drag & Drop z GNOME)
 
 import St      from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -6,14 +6,57 @@ import Shell   from 'gi://Shell';
 import GLib    from 'gi://GLib';
 
 import * as AppFavorites from 'resource:///org/gnome/shell/ui/appFavorites.js';
-import { AppButton } from './appbutton.js';
+import * as DND          from 'resource:///org/gnome/shell/ui/dnd.js';
+import { AppButton }     from './appbutton.js';
 
 export function buildAppsList(host) {
     const appBox = new St.BoxLayout({
         style_class : 'tb-apps',
         y_align     : Clutter.ActorAlign.CENTER,
         y_expand    : false,
+        reactive    : true, // KLUCZOWE: Musi być reaktywne, by przyjmować drop z zewnątrz
     });
+
+    // 🟢 NATYWNY DROP Z MENU GNOME (APP GRID) 🟢
+    appBox._delegate = {
+        handleDragOver(source, actor, x, y, time) {
+            const app = source.app || (source.appInfo ? source.appInfo : null);
+            if (app && typeof app.get_id === 'function') {
+                return DND.DragMotionResult.MOVE_DROP;
+            }
+            return DND.DragMotionResult.NO_DROP;
+        },
+        acceptDrop(source, actor, x, y, time) {
+            const app = source.app || (source.appInfo ? source.appInfo : null);
+            if (!app || typeof app.get_id !== 'function') return false;
+            
+            const id = app.get_id();
+            const favs = AppFavorites.getAppFavorites();
+            
+            // Obliczamy pozycję upuszczenia na podstawie kursora myszy (x)
+            let dropIndex = favs.getFavorites().length;
+            const children = appBox.get_children();
+            
+            for (let i = 0; i < children.length; i++) {
+                const child = children[i];
+                const [childX] = child.get_transformed_position();
+                if (x < childX + child.width / 2) {
+                    dropIndex = i;
+                    break;
+                }
+            }
+            
+            // Nie pozwalamy przypiąć dalej niż na końcu strefy ulubionych
+            dropIndex = Math.min(dropIndex, favs.getFavorites().length);
+            
+            if (!favs.isFavorite(id)) {
+                favs.addFavorite(id, dropIndex); // Przypina w wybranym miejscu
+            } else {
+                if (typeof favs.moveFavoriteToPos === 'function') favs.moveFavoriteToPos(id, dropIndex);
+            }
+            return true;
+        }
+    };
 
     const rebuildApps = () => {
         const favs    = AppFavorites.getAppFavorites().getFavorites();
@@ -28,38 +71,50 @@ export function buildAppsList(host) {
             if (!favIds.has(id) && !host._runOrder.includes(id))
                 host._runOrder.push(id);
         }
-        host._runOrder = host._runOrder.filter(id =>
-            runningIds.has(id) && !favIds.has(id));
+        host._runOrder = host._runOrder.filter(id => runningIds.has(id) && !favIds.has(id));
 
-        const runById   = new Map(running.map(a => [a.get_id(), a]));
-        const runOrdered = host._runOrder
-            .map(id => runById.get(id))
-            .filter(a => a);
+        const runById = new Map(running.map(a => [a.get_id(), a]));
+        const orderedRun = host._runOrder.map(id => runById.get(id)).filter(a => a);
 
-        const all    = [...favs, ...runOrdered];
-        const allIds = new Set(all.map(a => a.get_id()));
+        for (const a of running) {
+            if (!favIds.has(a.get_id()) && !host._runOrder.includes(a.get_id())) {
+                orderedRun.push(a);
+            }
+        }
 
-        for (const [id, btn] of host._buttons)
-            if (!allIds.has(id)) { btn.destroy(); host._buttons.delete(id); }
-
-        all.forEach((app, i) => {
+        const toKeep = new Set();
+        const addBtn = (app) => {
             const id = app.get_id();
+            toKeep.add(id);
             if (!host._buttons.has(id)) {
                 const btn = new AppButton(app);
                 host._buttons.set(id, btn);
-                appBox.insert_child_at_index(btn, i);
-            } else {
-                appBox.set_child_at_index(host._buttons.get(id), i);
             }
-        });
+            appBox.add_child(host._buttons.get(id));
+        };
+
+        appBox.remove_all_children();
+        for (const app of favs) addBtn(app);
+        for (const app of orderedRun) addBtn(app);
+
+        for (const [id, btn] of host._buttons.entries()) {
+            if (!toKeep.has(id)) {
+                btn.destroy();
+                host._buttons.delete(id);
+            }
+        }
         updateStates();
     };
 
     const updateStates = () => {
-        const running   = new Set(Shell.AppSystem.get_default().get_running().map(a => a.get_id()));
-        const focusedId = Shell.WindowTracker.get_default().focus_app?.get_id() ?? null;
-        for (const [id, btn] of host._buttons)
-            btn.updateState(running.has(id), id === focusedId);
+        const tracker = Shell.WindowTracker.get_default();
+        const focusApp = tracker.focus_app;
+        for (const [id, btn] of host._buttons.entries()) {
+            const app = btn.app;
+            const running = app.get_state() === Shell.AppState.RUNNING;
+            const active  = (focusApp && focusApp.get_id() === id);
+            btn.updateState(running, active);
+        }
     };
 
     const connectSignals = () => {
@@ -91,5 +146,5 @@ export function buildAppsList(host) {
         })]);
     };
 
-    return { actor: appBox, rebuildApps, updateStates, connectSignals };
+    return { actor: appBox, rebuildApps, connectSignals };
 }
