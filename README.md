@@ -72,7 +72,7 @@ gnome-extensions prefs gnome-panel@user.local
 Opcje:
 - Tryb: klasyczny / pływający  
 - Auto-ukrywanie  
-- disable-unredirect (zalecane)  
+- disable-unredirect 
 - Motyw  
 
 ---
