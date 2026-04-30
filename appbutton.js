@@ -1,4 +1,4 @@
-// Prosty Panel — appbutton.js (Wersja z inteligentnym przeciąganiem)
+// Prosty Panel — appbutton.js (Wersja z inteligentnym przeciąganiem i skrótami ŚPM)
 
 import GObject  from 'gi://GObject';
 import St       from 'gi://St';
@@ -62,6 +62,8 @@ class AppButton extends St.Button {
 
     _onButtonPress(_a, ev) {
         const btn = ev.get_button();
+        
+        // Lewy przycisk (1) - kliknięcie lub przeciąganie
         if (btn === 1) {
             const [sx, sy] = ev.get_coords();
             this._press = { x: sx, y: sy, dragging: false, motionId: 0, releaseId: 0 };
@@ -84,7 +86,33 @@ class AppButton extends St.Button {
             });
             return Clutter.EVENT_STOP;
         }
-        if (btn === 3) { this._showContextMenu(); return Clutter.EVENT_STOP; }
+        
+        // Środkowy przycisk (2) - nowe okno lub zamknięcie (jeśli wciśnięty Shift)
+        if (btn === 2) {
+            const state = ev.get_state();
+            const isShift = (state & Clutter.ModifierType.SHIFT_MASK) !== 0;
+            
+            if (isShift) {
+                // Shift + ŚPM = Zamknij wszystkie okna
+                const wins = this._app.get_windows();
+                for (const w of wins) w.delete(global.get_current_time());
+            } else {
+                // Samo ŚPM = Otwórz nowe okno
+                if (this._app.can_open_new_window?.()) {
+                    this._app.open_new_window(-1);
+                } else {
+                    this._app.activate();
+                }
+            }
+            return Clutter.EVENT_STOP;
+        }
+
+        // Prawy przycisk (3) - Menu kontekstowe
+        if (btn === 3) { 
+            this._showContextMenu(); 
+            return Clutter.EVENT_STOP; 
+        }
+        
         return Clutter.EVENT_PROPAGATE;
     }
 
