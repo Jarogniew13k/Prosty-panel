@@ -1,4 +1,4 @@
-# Prosty Panel (Gnome Bottom Panel)
+# Prosty Panel 
 
 Czysty, funkcjonalny pasek zadań na dole ekranu dla GNOME Shell.  
 Łączy w sobie najpotrzebniejsze elementy – ikony aplikacji, tacę systemową, zegar i przycisk Aktywności.  
