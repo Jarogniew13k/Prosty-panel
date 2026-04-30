@@ -3,6 +3,7 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import Meta from 'gi://Meta';
+import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { PANEL_HEIGHT } from './constants.js';
 import { BottomTaskbar } from './classicpanel.js';
@@ -25,10 +26,7 @@ export class FloatPanel {
         this._unredirectDisabled = false;
         this._targetBox = null;
         this._wasVisible = true;
-
-        // Zmienne do ręcznego śledzenia okien (Auto-Hide OFF)
-        this._trackedWin = null;
-        this._trackedWinSignals = [];
+        this._checkDebounceId = 0;
     }
 
     enable() {
@@ -73,16 +71,20 @@ export class FloatPanel {
         if (this._autoHide) {
             this._enableIntellihide();
         } else {
-            // Włączamy ręczne śledzenie okien dla trybu "Zawsze na wierzchu"
-            this._setupStaticTracker();
+            // Śledzenie dla wyłączonego auto-hide (Poprawiona logika)
+            this._focusId = global.display.connect('notify::focus-window', () => {
+                if (this._bar) Main.layoutManager._queueUpdateRegions();
+                this._queueFullscreenCheck();
+            });
+            this._queueFullscreenCheck();
         }
     }
 
     disable() {
-        this._clearTrackedWindow();
         if (this._focusId) { global.display.disconnect(this._focusId); this._focusId = 0; }
         if (this._themeId && this._settings) { this._settings.disconnect(this._themeId); this._themeId = 0; }
         if (this._monitorId) { Main.layoutManager.disconnect(this._monitorId); this._monitorId = 0; }
+        if (this._checkDebounceId) { GLib.source_remove(this._checkDebounceId); this._checkDebounceId = 0; }
         
         if (this._intellihide) { this._intellihide.disable(); this._intellihide = null; }
         if (this._dummyStrut) { Main.layoutManager.removeChrome(this._dummyStrut); this._dummyStrut.destroy(); this._dummyStrut = null; }
@@ -92,35 +94,13 @@ export class FloatPanel {
         this._showTopPanel();
     }
 
-    // =========================================================================
-    //  NOWA LOGIKA: Ukrywanie paska pływającego (Auto-Hide = OFF) w grach
-    // =========================================================================
-    
-    _setupStaticTracker() {
-        this._focusId = global.display.connect('notify::focus-window', () => {
-            if (this._bar) Main.layoutManager._queueUpdateRegions();
-            this._trackActiveWindow();
+    _queueFullscreenCheck() {
+        if (this._checkDebounceId) return;
+        this._checkDebounceId = GLib.idle_add(GLib.PRIORITY_LOW, () => {
+            this._checkDebounceId = 0;
+            this._updateStaticVisibility();
+            return GLib.SOURCE_REMOVE;
         });
-        this._trackActiveWindow();
-    }
-
-    _trackActiveWindow() {
-        this._clearTrackedWindow();
-        const win = global.display.focus_window;
-        if (win) {
-            this._trackedWin = win;
-            this._trackedWinSignals.push(win.connect('size-changed', () => this._updateStaticVisibility()));
-            this._trackedWinSignals.push(win.connect('position-changed', () => this._updateStaticVisibility()));
-        }
-        this._updateStaticVisibility();
-    }
-
-    _clearTrackedWindow() {
-        if (this._trackedWin) {
-            for (const id of this._trackedWinSignals) try { this._trackedWin.disconnect(id); } catch(e) {}
-        }
-        this._trackedWin = null;
-        this._trackedWinSignals = [];
     }
 
     _updateStaticVisibility() {
@@ -134,11 +114,13 @@ export class FloatPanel {
             } else {
                 const rect = activeWin.get_frame_rect();
                 const mon = Main.layoutManager.primaryMonitor;
-                const isFullscreenSize = (rect.x <= mon.x && rect.y <= mon.y &&
-                                          rect.width >= mon.width && rect.height >= mon.height);
+                const isMonitorSize = (rect.x <= mon.x && rect.y <= mon.y &&
+                                       rect.width >= mon.width && rect.height >= mon.height);
                 const type = activeWin.get_window_type();
-                // Jeśli okno wielkości ekranu i nie pulpit -> chowamy (gra/wideo)
-                if (isFullscreenSize && type <= Meta.WindowType.SPLASHSCREEN && type !== Meta.WindowType.DESKTOP) {
+                
+                // Gra borderless ukrywa pasek. Przeglądarka (zmaksymalizowana poziomo/pionowo) - nie.
+                if (isMonitorSize && !(activeWin.maximized_horizontally && activeWin.maximized_vertically) &&
+                    type !== Meta.WindowType.DESKTOP && type !== Meta.WindowType.DOCK) {
                     shouldHide = true;
                 }
             }
@@ -150,8 +132,6 @@ export class FloatPanel {
             if (!this._bar.visible && this._wasVisible) { this._bar.visible = true; }
         }
     }
-
-    // =========================================================================
 
     _updateTargetBox() {
         if (!this._bar) return;
