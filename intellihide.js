@@ -1,4 +1,4 @@
-// Prosty Panel — intellihide.js 
+// Prosty Panel — intellihide.js
 
 import Clutter from 'gi://Clutter';
 import GLib    from 'gi://GLib';
@@ -8,14 +8,18 @@ import Meta    from 'gi://Meta';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PointerWatcher from 'resource:///org/gnome/shell/ui/pointerWatcher.js';
 
-const CHECK_POINTER_MS   = 50;
-const ANIMATION_TIME     = 150;
-const HIDE_DELAY         = 400;
-const SHOW_DELAY_MS      = 0;
-const EDGE_THRESHOLD     = 1;
+const CHECK_POINTER_MS        = 50;
+const ANIMATION_TIME          = 150;
+const HIDE_DELAY              = 400;
+const SHOW_DELAY_MS           = 0;
+const EDGE_THRESHOLD          = 1;
 const HOVER_EXTEND_HORIZONTAL = 15;
 const HOVER_EXTEND_BOTTOM     = 20;
 const HOVER_EXTEND_TOP        = 10;
+
+// Jak długo (ms) po window-created czekamy na resize gry borderless
+// (niektóre gry robią: małe okno → fullscreen po ~500ms)
+const NEW_WINDOW_RECHECK_DELAY = 800;
 
 export const Intellihide = GObject.registerClass({
     Signals: {
@@ -29,23 +33,27 @@ export const Intellihide = GObject.registerClass({
         this._monitor  = monitor;
         this._taskbar  = taskbar;
 
-        this._holdCounter     = 0;
-        this._hover           = false;
-        this._visible         = true;
-        this._proximityOverlap= false;
-        this._enabled         = false;
-        this._targetBox       = null;
+        this._holdCounter      = 0;
+        this._hover            = false;
+        this._visible          = true;
+        this._proximityOverlap = false;
+        this._enabled          = false;
+        this._targetBox        = null;
 
-        this._hideTimer        = null;
-        this._showTimer        = null;
-        this._pointerWatchId   = 0;
-        
-        // Tablice do trzymania sygnałów z proximity
-        this._generalSignals   = [];
-        this._trackedWin       = null;
-        this._trackedWinSignals= [];
-        this._checkDebounceId  = 0;
+        this._hideTimer       = null;
+        this._showTimer       = null;
+        this._pointerWatchId  = 0;
+
+        this._generalSignals  = [];
+
+        // Śledzimy WSZYSTKIE okna na workspace, nie tylko focus_window
+        this._trackedWindows  = new Map(); // MetaWindow → [signalId, ...]
+
+        this._checkDebounceId    = 0;
+        this._newWinRecheckId    = 0;
     }
+
+    // ─── public API ──────────────────────────────────────────────────────────
 
     updateTargetBox(box) {
         this._targetBox = box;
@@ -67,9 +75,8 @@ export const Intellihide = GObject.registerClass({
             (x, y) => this._onPointerMove(x, y)
         );
 
-        // -- PODPINAMY SIĘ POD EVENTY (jak w proximity.js) --
-        const bind = (obj, sig, callback) => {
-            const id = obj.connect(sig, callback);
+        const bind = (obj, sig, cb) => {
+            const id = obj.connect(sig, cb);
             this._generalSignals.push({ obj, id });
         };
 
@@ -78,18 +85,37 @@ export const Intellihide = GObject.registerClass({
         bind(this._taskbar, 'drag-start',  () => this.revealAndHold());
         bind(this._taskbar, 'drag-end',    () => this.release());
 
-        bind(Main.overview, 'showing', () => { if (this._enabled) this._updatePanelVisibility(true); });
-        bind(Main.overview, 'hidden',  () => { this._queueProximityCheck(); if (this._enabled) this._updatePanelVisibility(false); });
+        bind(Main.overview, 'showing', () => {
+            if (this._enabled) this._updatePanelVisibility(true);
+        });
+        bind(Main.overview, 'hidden', () => {
+            this._queueProximityCheck();
+            if (this._enabled) this._updatePanelVisibility(false);
+        });
 
-        // Główne sygnały okien
+        // focus-window zmienia się → odśwież zestaw śledzonych okien
         bind(global.display, 'notify::focus-window', () => {
-            this._updateTrackedWindow();
+            this._rebuildTrackedWindows();
             this._queueProximityCheck();
         });
-        bind(global.display, 'restacked', () => this._queueProximityCheck());
-        bind(global.window_manager, 'switch-workspace', () => this._queueProximityCheck());
 
-        this._updateTrackedWindow();
+        // nowe okno pojawiło się (np. gra odpaliła się po launcherze)
+        bind(global.display, 'window-created', (_dpy, win) => {
+            this._onWindowCreated(win);
+        });
+
+        bind(global.display, 'restacked', () => this._queueProximityCheck());
+        bind(global.window_manager, 'switch-workspace', () => {
+            this._rebuildTrackedWindows();
+            this._queueProximityCheck();
+        });
+        bind(global.window_manager, 'map', (_wm, _actor) => {
+            // okno stało się widoczne (np. po unminimize)
+            this._rebuildTrackedWindows();
+            this._queueProximityCheck();
+        });
+
+        this._rebuildTrackedWindows();
         this._updatePanelVisibility(true);
         this._queueProximityCheck();
     }
@@ -102,24 +128,26 @@ export const Intellihide = GObject.registerClass({
             try { PointerWatcher.getPointerWatcher().removeWatch(this._pointerWatchId); } catch (e) {}
             this._pointerWatchId = 0;
         }
-        if (this._hideTimer) { GLib.source_remove(this._hideTimer); this._hideTimer = null; }
-        if (this._showTimer) { GLib.source_remove(this._showTimer); this._showTimer = null; }
-        if (this._checkDebounceId) { GLib.source_remove(this._checkDebounceId); this._checkDebounceId = 0; }
+        if (this._hideTimer)        { GLib.source_remove(this._hideTimer);        this._hideTimer = null; }
+        if (this._showTimer)        { GLib.source_remove(this._showTimer);        this._showTimer = null; }
+        if (this._checkDebounceId)  { GLib.source_remove(this._checkDebounceId);  this._checkDebounceId = 0; }
+        if (this._newWinRecheckId)  { GLib.source_remove(this._newWinRecheckId);  this._newWinRecheckId = 0; }
 
         for (const sig of this._generalSignals) {
-            try { sig.obj.disconnect(sig.id); } catch(e) {}
+            try { sig.obj.disconnect(sig.id); } catch (e) {}
         }
         this._generalSignals = [];
-        this._clearTrackedWindow();
+
+        this._clearAllTrackedWindows();
 
         this._panel.remove_all_transitions();
         this._panel.show();
         this._panel.opacity = 255;
         this._panel.set_reactive(true);
         this._panel.translation_y = 0;
-        this._visible = true;
+        this._visible     = true;
         this._holdCounter = 0;
-        this._hover = false;
+        this._hover       = false;
     }
 
     revealAndHold(immediate = false) {
@@ -134,40 +162,145 @@ export const Intellihide = GObject.registerClass({
         this._updatePanelVisibility(immediate);
     }
 
-    reset() {
-        this.disable();
-        this.enable();
-    }
+    reset() { this.disable(); this.enable(); }
 
-    // --- TRACKOWANIE AKTYWNEGO OKNA ---
-    _updateTrackedWindow() {
-        this._clearTrackedWindow();
-        const win = global.display.focus_window;
-        if (win) {
-            this._trackedWin = win;
-            // Dodano nasłuchiwanie na maksymalizację (błyskawiczna reakcja)
-            const signals = [
-                'size-changed', 
-                'position-changed', 
-                'notify::maximized-horizontally', 
-                'notify::maximized-vertically',
-                'notify::fullscreen'
-            ];
-            for (const sig of signals) {
-                this._trackedWinSignals.push(win.connect(sig, () => this._queueProximityCheck()));
+    // ─── window tracking ─────────────────────────────────────────────────────
+
+    /**
+     * Przebudowuje zestaw śledzonych okien.
+     * Śledzimy WSZYSTKIE okna na aktywnym workspace, nie tylko focusowane.
+     * Dzięki temu gra borderless/fullscreen jest wykrywana nawet jeśli
+     * launcher lub inne małe okno ma focus.
+     */
+    _rebuildTrackedWindows() {
+        const ws = global.workspace_manager.get_active_workspace();
+        const current = new Set(ws.list_windows());
+
+        // Odłącz sygnały od okien, które już nie istnieją lub nie są na workspace
+        for (const [win, ids] of this._trackedWindows) {
+            if (!current.has(win)) {
+                this._untrackWindow(win, ids);
+                this._trackedWindows.delete(win);
+            }
+        }
+
+        // Podłącz sygnały do nowych okien
+        for (const win of current) {
+            if (!this._trackedWindows.has(win)) {
+                this._trackWindow(win);
             }
         }
     }
 
-    _clearTrackedWindow() {
-        if (this._trackedWin) {
-            for (const id of this._trackedWinSignals) {
-                try { this._trackedWin.disconnect(id); } catch(e) {}
-            }
+    _trackWindow(win) {
+        const cb = () => this._queueProximityCheck();
+        const ids = [];
+
+        const signals = [
+            'size-changed',
+            'position-changed',
+            'notify::fullscreen',
+            'notify::maximized-horizontally',
+            'notify::maximized-vertically',
+            'notify::minimized',
+            'unmanaged',
+        ];
+        for (const sig of signals) {
+            try { ids.push(win.connect(sig, cb)); } catch (e) {}
         }
-        this._trackedWin = null;
-        this._trackedWinSignals = [];
+        this._trackedWindows.set(win, ids);
     }
+
+    _untrackWindow(win, ids) {
+        if (!ids) ids = this._trackedWindows.get(win) || [];
+        for (const id of ids) {
+            try { win.disconnect(id); } catch (e) {}
+        }
+    }
+
+    _clearAllTrackedWindows() {
+        for (const [win, ids] of this._trackedWindows) {
+            this._untrackWindow(win, ids);
+        }
+        this._trackedWindows.clear();
+    }
+
+    /**
+     * Obsługa nowo tworzonego okna.
+     * Gry często otwierają małe okno (launcher, splash) → potem dopiero
+     * główne okno gry. Dodajemy je od razu do śledzenia i planujemy
+     * opóźniony re-check (gra może resize-ować się do fullscreen z małym opóźnieniem).
+     */
+    _onWindowCreated(win) {
+        if (!this._enabled) return;
+
+        // Poczekaj chwilę aż okno dostanie właściwy typ/rozmiar
+        GLib.idle_add(GLib.PRIORITY_LOW, () => {
+            if (!this._enabled) return GLib.SOURCE_REMOVE;
+            this._rebuildTrackedWindows();
+            this._queueProximityCheck();
+            return GLib.SOURCE_REMOVE;
+        });
+
+        // Drugi re-check po NEW_WINDOW_RECHECK_DELAY ms
+        // (dla gier które robią resize z opóźnieniem)
+        if (this._newWinRecheckId) {
+            GLib.source_remove(this._newWinRecheckId);
+        }
+        this._newWinRecheckId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, NEW_WINDOW_RECHECK_DELAY, () => {
+            this._newWinRecheckId = 0;
+            if (!this._enabled) return GLib.SOURCE_REMOVE;
+            this._rebuildTrackedWindows();
+            this._queueProximityCheck();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    // ─── fullscreen detection ─────────────────────────────────────────────────
+
+    /**
+     * Sprawdza CZY JAKIEKOLWIEK okno na workspace jest fullscreen/borderless.
+     * Poprzednio: tylko focus_window → launcher blokował wykrycie gry.
+     * Teraz: skanujemy wszystkie okna.
+     */
+    _isAnyWindowFullscreen() {
+        const ws = global.workspace_manager.get_active_workspace();
+        for (const win of ws.list_windows()) {
+            if (win.minimized || win.is_hidden()) continue;
+            if (win.get_monitor() !== this._monitor.index) continue;
+
+            if (this._windowIsFullscreen(win)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Ocenia czy pojedyncze okno jest fullscreen lub borderless fullscreen (gra).
+     */
+    _windowIsFullscreen(win) {
+        // Prawdziwy fullscreen (F11, exclusive fullscreen)
+        if (win.fullscreen) return true;
+
+        const rect = win.get_frame_rect();
+        const mon  = this._monitor;
+        const tol  = 2; // piksele tolerancji (niektóre gry mają 1px offset)
+
+        const coversMonitor = (
+            Math.abs(rect.x      - mon.x)      <= tol &&
+            Math.abs(rect.y      - mon.y)      <= tol &&
+            Math.abs(rect.width  - mon.width)  <= tol &&
+            Math.abs(rect.height - mon.height) <= tol
+        );
+        if (!coversMonitor) return false;
+
+        // Zmaksymalizowane poziomo+pionowo = normalna maksymalizacja, nie gra
+        if (win.maximized_horizontally && win.maximized_vertically) return false;
+
+        // Pokrywa monitor, nie jest zmaksymalizowane → borderless fullscreen (gra)
+        return true;
+    }
+
+    // ─── proximity check ─────────────────────────────────────────────────────
 
     _queueProximityCheck() {
         if (!this._enabled) return;
@@ -179,40 +312,74 @@ export const Intellihide = GObject.registerClass({
         });
     }
 
-    _isFullscreen() {
-        const activeWin = global.display.focus_window;
-        if (!activeWin) return false;
-        if (activeWin.get_monitor() !== this._monitor.index) return false;
+    _checkProximity() {
+        if (!this._enabled) return;
+        if (!this._panel || this._panel.get_stage() === null || this._panel._panelDestroyed) return;
 
-        // F11 lub czysty tryb pełnoekranowy (Gry, YouTube)
-        if (activeWin.fullscreen) return true;
-
-        const rect = activeWin.get_frame_rect();
-        const mon = this._monitor;
-        const isFullscreenSize = (rect.x <= mon.x && rect.y <= mon.y &&
-                                  rect.width >= mon.width &&
-                                  rect.height >= mon.height);
-
-        if (isFullscreenSize) {
-            // KLUCZOWA POPRAWKA: Rozróżniamy zmakymalizowaną przeglądarkę od gry.
-            // Jeśli użytkownik "zmaksmalizował" okno, odblokowujemy hover.
-            if (activeWin.maximized_horizontally && activeWin.maximized_vertically) {
-                return false; 
+        // Jeśli jakiekolwiek okno jest fullscreen → ukryj panel bez dalszego sprawdzania
+        if (this._isAnyWindowFullscreen()) {
+            if (this._proximityOverlap !== true) {
+                this._proximityOverlap = true;
+                this._updatePanelVisibility(false);
             }
+            return;
+        }
 
-            const type = activeWin.get_window_type();
-            if (type <= Meta.WindowType.SPLASHSCREEN && type !== Meta.WindowType.DESKTOP) {
-                return true;
+        const geom = this._getGeometry();
+        if (!geom) return;
+
+        let overlap = false;
+        const ws = global.workspace_manager.get_active_workspace();
+
+        for (const win of ws.list_windows()) {
+            if (win.minimized || win.is_hidden()) continue;
+            if (win.get_monitor() !== this._monitor.index) continue;
+
+            const type = win.get_window_type();
+            if (type > Meta.WindowType.SPLASHSCREEN || type === Meta.WindowType.DESKTOP) continue;
+
+            const rect = win.get_frame_rect();
+            if (rect.x < geom.x + geom.width  &&
+                rect.x + rect.width  > geom.x  &&
+                rect.y < geom.y + geom.height  &&
+                rect.y + rect.height > geom.y) {
+                overlap = true;
+                break;
             }
         }
-        return false;
+
+        if (overlap !== this._proximityOverlap) {
+            this._proximityOverlap = overlap;
+            this._updatePanelVisibility(false);
+        }
     }
+
+    _getGeometry() {
+        if (this._targetBox) {
+            return {
+                x      : this._targetBox.x1,
+                y      : this._targetBox.y1,
+                width  : this._targetBox.x2 - this._targetBox.x1,
+                height : this._targetBox.y2 - this._targetBox.y1,
+            };
+        }
+        if (!this._panel) return null;
+        const [px, py] = this._panel.get_transformed_position();
+        return {
+            x      : px,
+            y      : py,
+            width  : this._panel.width || this._monitor.width,
+            height : this._panel.height,
+        };
+    }
+
+    // ─── pointer ─────────────────────────────────────────────────────────────
 
     _onPointerMove(x, y) {
         if (!this._enabled) return;
-        
-        // Zablokuj hover TYLKO jeśli to prawdziwa gra / F11, a nie zmaksymalizowana przeglądarka!
-        if (this._isFullscreen()) return;
+
+        // W fullscreen nie reagujemy na myszkę (gra wyłączna)
+        if (this._isAnyWindowFullscreen()) return;
 
         const mon = this._monitor;
         const isAtBottomEdge = (y >= mon.y + mon.height - EDGE_THRESHOLD);
@@ -222,10 +389,12 @@ export const Intellihide = GObject.registerClass({
             const [px, py] = this._panel.get_transformed_position();
             const pw = this._panel.width;
             const ph = this._panel.height;
-            isOverPanel = (x >= px - HOVER_EXTEND_HORIZONTAL && 
-                           x <= px + pw + HOVER_EXTEND_HORIZONTAL && 
-                           y >= py - HOVER_EXTEND_TOP && 
-                           y <= py + ph + HOVER_EXTEND_BOTTOM);
+            isOverPanel = (
+                x >= px - HOVER_EXTEND_HORIZONTAL &&
+                x <= px + pw + HOVER_EXTEND_HORIZONTAL &&
+                y >= py - HOVER_EXTEND_TOP &&
+                y <= py + ph + HOVER_EXTEND_BOTTOM
+            );
         }
 
         if (!isOverPanel) {
@@ -259,66 +428,14 @@ export const Intellihide = GObject.registerClass({
         }
     }
 
-    _checkProximity() {
-        if (!this._enabled) return;
-        if (this._isFullscreen()) return;
-        if (!this._panel || this._panel.get_stage() === null || this._panel._panelDestroyed) return;
-        
-        const geom = this._getGeometry();
-        if (!geom) return;
-
-        let overlap = false;
-        const ws = global.workspace_manager.get_active_workspace();
-        const windows = ws.list_windows();
-
-        for (const win of windows) {
-            if (win.minimized || win.is_hidden()) continue;
-            if (win.get_monitor() !== this._monitor.index) continue;
-            
-            const type = win.get_window_type();
-            if (type > Meta.WindowType.SPLASHSCREEN || type === Meta.WindowType.DESKTOP) continue;
-
-            const rect = win.get_frame_rect();
-            if (rect.x < geom.x + geom.width &&
-                rect.x + rect.width > geom.x &&
-                rect.y < geom.y + geom.height &&
-                rect.y + rect.height > geom.y) {
-                overlap = true;
-                break;
-            }
-        }
-
-        if (overlap !== this._proximityOverlap) {
-            this._proximityOverlap = overlap;
-            this._updatePanelVisibility(false);
-        }
-    }
-
-    _getGeometry() {
-        if (this._targetBox) {
-            return {
-                x      : this._targetBox.x1,
-                y      : this._targetBox.y1,
-                width  : this._targetBox.x2 - this._targetBox.x1,
-                height : this._targetBox.y2 - this._targetBox.y1,
-            };
-        }
-        if (!this._panel) return null;
-        const [px, py] = this._panel.get_transformed_position();
-        return {
-            x      : px,
-            y      : py,
-            width  : this._panel.width || this._monitor.width,
-            height : this._panel.height,
-        };
-    }
+    // ─── visibility logic ─────────────────────────────────────────────────────
 
     _shouldBeVisible() {
-        if (Main.overview.visible) return true;
-        if (this._holdCounter > 0) return true;
-        if (this._isFullscreen()) return false;
-        if (this._hover) return true;
-        if (this._proximityOverlap) return false;
+        if (Main.overview.visible)      return true;
+        if (this._holdCounter > 0)      return true;
+        if (this._isAnyWindowFullscreen()) return false;
+        if (this._hover)                return true;
+        if (this._proximityOverlap)     return false;
         return true;
     }
 
@@ -326,9 +443,7 @@ export const Intellihide = GObject.registerClass({
         if (!this._enabled) return;
         const wantVisible = this._shouldBeVisible();
         if (wantVisible === this._visible && !immediate) return;
-
-        if (wantVisible) this._showPanel(immediate);
-        else this._scheduleHide(immediate);
+        wantVisible ? this._showPanel(immediate) : this._scheduleHide(immediate);
     }
 
     _showPanel(immediate) {
@@ -374,15 +489,12 @@ export const Intellihide = GObject.registerClass({
 
     _animateTo(targetY, delay, onComplete) {
         const current = this._panel.translation_y;
-        if (current === targetY) {
-            if (onComplete) onComplete();
-            return;
-        }
+        if (current === targetY) { if (onComplete) onComplete(); return; }
         this._panel.ease({
             translation_y : targetY,
             opacity       : targetY === 0 ? 255 : 0,
             duration      : ANIMATION_TIME,
-            delay         : delay,
+            delay,
             mode          : Clutter.AnimationMode.EASE_OUT_QUAD,
             onStopped     : () => {
                 if (onComplete) onComplete();
