@@ -1,4 +1,4 @@
-// Prosty Panel — floatpanel.js 
+// Prosty Panel — floatpanel.js (Z zaawansowanym śledzeniem okien i Alt+Tab Fix)
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -11,6 +11,7 @@ import { Intellihide } from './intellihide.js';
 
 const FLOAT_MARGIN = 8;
 const STRUT_HEIGHT = 64; 
+const NEW_WINDOW_RECHECK_DELAY = 800; // Opóźnienie dla gier z launcherami
 
 export class FloatPanel {
     constructor({ autoHide = false, settings = null }) {
@@ -20,13 +21,17 @@ export class FloatPanel {
         this._dummyStrut = null;
         this._intellihide = null;
         
-        this._focusId = 0;
         this._monitorId = 0;
         this._themeId = 0;
         this._unredirectDisabled = false;
         this._targetBox = null;
         this._wasVisible = true;
+        
+        // Zmienne do zaawansowanego śledzenia okien (gdy autoHide = false)
         this._checkDebounceId = 0;
+        this._newWinRecheckId = 0;
+        this._staticSignals = [];
+        this._trackedWindows = new Map();
     }
 
     enable() {
@@ -71,20 +76,16 @@ export class FloatPanel {
         if (this._autoHide) {
             this._enableIntellihide();
         } else {
-            // Śledzenie dla wyłączonego auto-hide (Poprawiona logika)
-            this._focusId = global.display.connect('notify::focus-window', () => {
-                if (this._bar) Main.layoutManager._queueUpdateRegions();
-                this._queueFullscreenCheck();
-            });
-            this._queueFullscreenCheck();
+            // Uruchomienie zaawansowanego śledzenia okien dla trybu wyłączonego auto-hide
+            this._enableStaticTracker();
         }
     }
 
     disable() {
-        if (this._focusId) { global.display.disconnect(this._focusId); this._focusId = 0; }
         if (this._themeId && this._settings) { this._settings.disconnect(this._themeId); this._themeId = 0; }
         if (this._monitorId) { Main.layoutManager.disconnect(this._monitorId); this._monitorId = 0; }
-        if (this._checkDebounceId) { GLib.source_remove(this._checkDebounceId); this._checkDebounceId = 0; }
+        
+        this._disableStaticTracker();
         
         if (this._intellihide) { this._intellihide.disable(); this._intellihide = null; }
         if (this._dummyStrut) { Main.layoutManager.removeChrome(this._dummyStrut); this._dummyStrut.destroy(); this._dummyStrut = null; }
@@ -94,36 +95,186 @@ export class FloatPanel {
         this._showTopPanel();
     }
 
+    // =========================================================================
+    //   ZAAWANSOWANY TRACKER OKIEN (Wzorowany na logice Intellihide)
+    // =========================================================================
+
+    _enableStaticTracker() {
+        const bind = (obj, sig, cb) => {
+            const id = obj.connect(sig, cb);
+            this._staticSignals.push({ obj, id });
+        };
+
+        // Kiedy Overview (Aktywności) jest włączane/wyłączane
+        bind(Main.overview, 'showing', () => this._queueFullscreenCheck());
+        bind(Main.overview, 'hidden', () => this._queueFullscreenCheck());
+
+        bind(global.display, 'notify::focus-window', () => {
+            this._rebuildTrackedWindows();
+            this._queueFullscreenCheck();
+        });
+
+        bind(global.display, 'window-created', (_dpy, win) => {
+            this._onWindowCreated(win);
+        });
+
+        bind(global.display, 'restacked', () => this._queueFullscreenCheck());
+        
+        bind(global.window_manager, 'switch-workspace', () => {
+            this._rebuildTrackedWindows();
+            this._queueFullscreenCheck();
+        });
+        
+        bind(global.window_manager, 'map', () => {
+            this._rebuildTrackedWindows();
+            this._queueFullscreenCheck();
+        });
+
+        this._rebuildTrackedWindows();
+        this._queueFullscreenCheck();
+    }
+
+    _disableStaticTracker() {
+        if (this._newWinRecheckId) { GLib.source_remove(this._newWinRecheckId); this._newWinRecheckId = 0; }
+        if (this._checkDebounceId) { GLib.source_remove(this._checkDebounceId); this._checkDebounceId = 0; }
+        
+        for (const sig of this._staticSignals) {
+            try { sig.obj.disconnect(sig.id); } catch(e) {}
+        }
+        this._staticSignals = [];
+        this._clearAllTrackedWindows();
+    }
+
+    _rebuildTrackedWindows() {
+        const ws = global.workspace_manager.get_active_workspace();
+        const current = new Set(ws.list_windows());
+
+        for (const [win, ids] of this._trackedWindows) {
+            if (!current.has(win)) {
+                this._untrackWindow(win, ids);
+                this._trackedWindows.delete(win);
+            }
+        }
+
+        for (const win of current) {
+            if (!this._trackedWindows.has(win)) {
+                this._trackWindow(win);
+            }
+        }
+    }
+
+    _trackWindow(win) {
+        const cb = () => this._queueFullscreenCheck();
+        const ids = [];
+        const signals = [
+            'size-changed',
+            'position-changed',
+            'notify::fullscreen',
+            'notify::maximized-horizontally',
+            'notify::maximized-vertically',
+            'notify::minimized',
+            'unmanaged',
+        ];
+        for (const sig of signals) {
+            try { ids.push(win.connect(sig, cb)); } catch(e) {}
+        }
+        this._trackedWindows.set(win, ids);
+    }
+
+    _untrackWindow(win, ids) {
+        if (!ids) ids = this._trackedWindows.get(win) || [];
+        for (const id of ids) {
+            try { win.disconnect(id); } catch(e) {}
+        }
+    }
+
+    _clearAllTrackedWindows() {
+        for (const [win, ids] of this._trackedWindows) {
+            this._untrackWindow(win, ids);
+        }
+        this._trackedWindows.clear();
+    }
+
+    _onWindowCreated(win) {
+        GLib.idle_add(GLib.PRIORITY_LOW, () => {
+            this._rebuildTrackedWindows();
+            this._queueFullscreenCheck();
+            return GLib.SOURCE_REMOVE;
+        });
+
+        if (this._newWinRecheckId) GLib.source_remove(this._newWinRecheckId);
+        
+        this._newWinRecheckId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, NEW_WINDOW_RECHECK_DELAY, () => {
+            this._newWinRecheckId = 0;
+            this._rebuildTrackedWindows();
+            this._queueFullscreenCheck();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
     _queueFullscreenCheck() {
         if (this._checkDebounceId) return;
-        this._checkDebounceId = GLib.idle_add(GLib.PRIORITY_LOW, () => {
+        
+        // Zmieniono z idle_add na timeout 250ms, żeby przeczekać animację okna
+        this._checkDebounceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
             this._checkDebounceId = 0;
             this._updateStaticVisibility();
             return GLib.SOURCE_REMOVE;
         });
     }
 
+    // =========================================================================
+    //   LOGIKA WIDOCZNOŚCI (Z Z-INDEX I ALTTAB FIX)
+    // =========================================================================
+
     _updateStaticVisibility() {
         if (!this._bar || this._autoHide) return;
-        const activeWin = global.display.focus_window;
-        let shouldHide = false;
+        
+        // Zawsze pokazuj pasek w Overview
+        if (Main.overview.visible) {
+            if (!this._bar.visible) { this._bar.visible = true; this._wasVisible = true; }
+            return;
+        }
 
-        if (activeWin && activeWin.get_monitor() === Main.layoutManager.primaryMonitor.index) {
-            if (activeWin.fullscreen) {
-                shouldHide = true;
-            } else {
-                const rect = activeWin.get_frame_rect();
-                const mon = Main.layoutManager.primaryMonitor;
-                const isMonitorSize = (rect.x <= mon.x && rect.y <= mon.y &&
-                                       rect.width >= mon.width && rect.height >= mon.height);
-                const type = activeWin.get_window_type();
-                
-                // Gra borderless ukrywa pasek. Przeglądarka (zmaksymalizowana poziomo/pionowo) - nie.
-                if (isMonitorSize && !(activeWin.maximized_horizontally && activeWin.maximized_vertically) &&
-                    type !== Meta.WindowType.DESKTOP && type !== Meta.WindowType.DOCK) {
-                    shouldHide = true;
-                }
+        const mon = Main.layoutManager.primaryMonitor;
+        const ws = global.workspace_manager.get_active_workspace();
+        let windows = ws.list_windows();
+        
+        // Tak samo tutaj - sortujemy okna według warstw
+        windows = global.display.sort_windows_by_stacking(windows);
+        
+        let foundFullscreen = false;
+        let fullscreenZIndex = -1;
+        let focusedZIndex = -1;
+
+        for (let i = 0; i < windows.length; i++) {
+            const win = windows[i];
+            if (win.get_monitor() !== mon.index || win.minimized || win.is_hidden())
+                continue;
+
+            if (win.has_focus()) {
+                focusedZIndex = i;
             }
+
+            const rect = win.get_frame_rect();
+            const isFullscreenSize = (rect.x <= mon.x && rect.y <= mon.y &&
+                                      rect.width >= mon.width && rect.height >= mon.height);
+            const type = win.get_window_type();
+            
+            if (win.fullscreen || (isFullscreenSize && 
+                !(win.maximized_horizontally && win.maximized_vertically) &&
+                type <= Meta.WindowType.SPLASHSCREEN && type !== Meta.WindowType.DESKTOP)) {
+                
+                foundFullscreen = true;
+                fullscreenZIndex = i;
+            }
+        }
+
+        let shouldHide = foundFullscreen;
+        
+        // Jeśli okno z focusem jest nad grą - pokazujemy pasek
+        if (foundFullscreen && focusedZIndex > fullscreenZIndex) {
+            shouldHide = false;
         }
 
         if (shouldHide) {
@@ -132,6 +283,8 @@ export class FloatPanel {
             if (!this._bar.visible && this._wasVisible) { this._bar.visible = true; }
         }
     }
+
+    // =========================================================================
 
     _updateTargetBox() {
         if (!this._bar) return;
