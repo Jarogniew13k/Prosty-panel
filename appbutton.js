@@ -256,12 +256,21 @@ class AppButton extends St.Button {
 
     _onHover() {
         if (this._isDestroyed) return;
+
+        // 🟢 NOWY BEZPIECZNIK: Jeśli panel jest schowany (nieaktywny), nie pokazuj nic
+        if (!this.get_reactive()) {
+            this._hideTooltip();
+            this._hideWindowPreview();
+            return;
+        }
+
         if (this._hideTimerId) { GLib.source_remove(this._hideTimerId); this._hideTimerId = null; }
         if (this._hoverTimeout) { GLib.source_remove(this._hoverTimeout); this._hoverTimeout = null; }
+        
         if (this.hover) {
             this._hoverTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, HOVER_DELAY_MS, () => {
                 this._hoverTimeout = null;
-                if (this._isDestroyed) return GLib.SOURCE_REMOVE;
+                if (this._isDestroyed || !this.get_reactive()) return GLib.SOURCE_REMOVE;
                 this._refreshPreview();
                 return GLib.SOURCE_REMOVE;
             });
