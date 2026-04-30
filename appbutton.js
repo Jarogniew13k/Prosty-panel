@@ -1,4 +1,4 @@
-// Prosty Panel — appbutton.js (Wersja Ostateczna i Stabilna)
+// Prosty Panel — appbutton.js (Wersja Ostateczna ze Stabilnym Podglądem)
 
 import GObject  from 'gi://GObject';
 import St       from 'gi://St';
@@ -251,13 +251,20 @@ class AppButton extends St.Button {
 
     _refreshPreview() {
         if (this._isDestroyed) return;
-        const wins = this._app.get_windows();
+        
+        // 1. POBIERAMY TYLKO OKNA Z AKTUALNEGO PULPITU
+        const ws = global.workspace_manager.get_active_workspace();
+        const wins = this._app.get_windows().filter(w => w.get_workspace() === ws);
+        
         if (wins.length > 0) {
             this._showWindowPreview(wins);
             if (!this._winSignalId) {
                 this._winSignalId = this._app.connect('windows-changed', () => {
                     if (this._isDestroyed) return;
-                    if (this.hover && this._previewPopup) this._showWindowPreview(this._app.get_windows());
+                    if (this.hover && this._previewPopup) {
+                        const currentWs = global.workspace_manager.get_active_workspace();
+                        this._showWindowPreview(this._app.get_windows().filter(w => w.get_workspace() === currentWs));
+                    }
                 });
             }
         } else {
@@ -267,7 +274,15 @@ class AppButton extends St.Button {
 
     _showWindowPreview(wins) {
         if (this._isDestroyed) return;
-        if (this._previewPopup) this._hideWindowPreview();
+
+        // 2. BLOKOWANIE INTELLIHIDE PRZY TWORZENIU POPUPU
+        if (!this._previewPopup) {
+            this._emitBarSignal('menu-opened');
+        } else {
+            this._hideWindowPreview();
+            this._emitBarSignal('menu-opened'); 
+        }
+
         const popup = new St.BoxLayout({ style_class : 'tb-preview-popup', reactive : true, track_hover : true, y_align : Clutter.ActorAlign.CENTER });
         const tc = this._getThemeClass(); if (tc) popup.add_style_class_name(tc);
         for (const win of wins) {
@@ -295,12 +310,19 @@ class AppButton extends St.Button {
             popup.add_child(cell);
         }
         Main.uiGroup.add_child(popup); popup.opacity = 0;
+        
         GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
             if (this._isDestroyed || !this._previewPopup) return GLib.SOURCE_REMOVE;
             const [ax, ay] = this.get_transformed_position();
-            const pw = popup.width; const ph = popup.height; const mon = Main.layoutManager.primaryMonitor;
+            
+            // 3. POPRAWNE POBIERANIE WYMIARÓW PRZED RYSOWANIEM
+            const [minW, pw] = popup.get_preferred_width(-1);
+            const [minH, ph] = popup.get_preferred_height(-1);
+            
+            const mon = Main.layoutManager.primaryMonitor;
             let x = ax + (this.width / 2) - (pw / 2);
             x = Math.max(mon.x + 4, Math.min(x, mon.x + mon.width - pw - 4));
+            
             popup.set_position(Math.floor(x), Math.floor(ay - ph - 6));
             popup.ease({ opacity: 255, duration: 120, mode: Clutter.AnimationMode.EASE_OUT_QUAD });
             return GLib.SOURCE_REMOVE;
@@ -328,6 +350,10 @@ class AppButton extends St.Button {
         if (this._winSignalId) { this._app.disconnect(this._winSignalId); this._winSignalId = null; }
         const popup = this._previewPopup; 
         if (!popup) return; 
+
+        // 4. ODBLOKOWANIE INTELLIHIDE
+        this._emitBarSignal('menu-closed');
+
         this._previewPopup = null;
         if (this._previewHoverTimer) { GLib.source_remove(this._previewHoverTimer); this._previewHoverTimer = null; }
         popup.ease({ opacity: 0, duration: 100, mode: Clutter.AnimationMode.EASE_OUT_QUAD, onStopped: () => { if (popup.get_parent()) Main.uiGroup.remove_child(popup); popup.destroy(); } });
@@ -376,12 +402,17 @@ class AppButton extends St.Button {
         if (this._hoverTimeout) GLib.source_remove(this._hoverTimeout);
         if (this._winSignalId) this._app.disconnect(this._winSignalId);
         if (this._menu) this._menu.destroy();
+        
         if (this._previewPopup) {
+            // 5. ZWALNIANIE BLOKADY PRZED BRUTALNYM USUNIĘCIEM
+            this._emitBarSignal('menu-closed');
+            
             this._previewPopup.remove_all_transitions();
             if (this._previewPopup.get_parent()) Main.uiGroup.remove_child(this._previewPopup); 
             this._previewPopup.destroy();
             this._previewPopup = null;
         }
+        
         if (this._tooltip) { 
             this._tooltip.remove_all_transitions();
             if (this._tooltip.get_parent()) Main.layoutManager.removeChrome(this._tooltip); 
