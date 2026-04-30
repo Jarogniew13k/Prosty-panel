@@ -100,7 +100,7 @@ rm -rf ~/.local/share/gnome-shell/extensions/gnome-panel@user.local
 
 ## 👏 Podziękowania (Credits)
 
-Ten projekt czerpie garściami z niesamowitej pracy społeczności Open Source. Chciałbym z tego miejsca podziękować twórcom wspaniałych rozszerzeń:
+Ten projekt czerpie garściami z pracy społeczności Open Source. Chciałbym z tego miejsca podziękować twórcom wspaniałych rozszerzeń:
 
 * **[Dash to Panel](https://github.com/home-sweet-gnome/dash-to-panel)** – logika inteligentnego ukrywania paska (Intellihide) oraz mechanizm wykrywania kolizji z oknami (Proximity) w tym projekcie bazują bezpośrednio na zmodyfikowanym kodzie źródłowym Dash to Panel.
 * **[Dash to Dock](https://github.com/micheleg/dash-to-dock)** – za ogromną inspirację do stworzenia trybu pływającego (Float) oraz ogólnego podejścia do zarządzania paskiem zadań w środowisku GNOME.
