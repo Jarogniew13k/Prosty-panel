@@ -1,4 +1,5 @@
 # Prosty Panel 
+<img width="2560" height="1440" alt="Zrzut ekranu z 2026-04-30 12-49-02" src="https://github.com/user-attachments/assets/97addf52-dff6-4666-92bb-4b562e13a873" />
 
 Czysty, funkcjonalny pasek zadań na dole ekranu dla GNOME Shell.  
 Łączy w sobie najpotrzebniejsze elementy – ikony aplikacji, tacę systemową, zegar i przycisk Aktywności.  
