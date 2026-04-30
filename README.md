@@ -98,7 +98,7 @@ rm -rf ~/.local/share/gnome-shell/extensions/gnome-panel@user.local
 
 ---
 
-## 👏 Podziękowania i Atrybucja (Credits)
+## 👏 Podziękowania (Credits)
 
 Ten projekt czerpie garściami z niesamowitej pracy społeczności Open Source. Chciałbym z tego miejsca podziękować twórcom wspaniałych rozszerzeń:
 
