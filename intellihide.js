@@ -13,9 +13,9 @@ const ANIMATION_TIME          = 150;
 const HIDE_DELAY              = 400;
 const SHOW_DELAY_MS           = 0;
 const EDGE_THRESHOLD          = 1;
-const HOVER_EXTEND_HORIZONTAL = 15;
-const HOVER_EXTEND_BOTTOM     = 20;
-const HOVER_EXTEND_TOP        = 10;
+const HOVER_EXTEND_HORIZONTAL = 7;
+const HOVER_EXTEND_BOTTOM     = 10;
+const HOVER_EXTEND_TOP        = 5;
 
 // Jak długo (ms) po window-created czekamy na resize gry borderless
 // (niektóre gry robią: małe okno → fullscreen po ~500ms)
