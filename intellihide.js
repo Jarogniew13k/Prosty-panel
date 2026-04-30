@@ -259,19 +259,50 @@ export const Intellihide = GObject.registerClass({
     // ─── fullscreen detection ─────────────────────────────────────────────────
 
     /**
-     * Sprawdza CZY JAKIEKOLWIEK okno na workspace jest fullscreen/borderless.
-     * Poprzednio: tylko focus_window → launcher blokował wykrycie gry.
-     * Teraz: skanujemy wszystkie okna.
+     * Sprawdza CZY JAKIEKOLWIEK okno na workspace jest fullscreen/borderless
+     * ORAZ czy znajduje się ono na wierzchu (fix dla Alt+Tab).
      */
     _isAnyWindowFullscreen() {
+        // Zawsze pokazuj pasek w trybie Overview (Aktywności)
+        if (Main.overview.visible) return false;
+
         const ws = global.workspace_manager.get_active_workspace();
-        for (const win of ws.list_windows()) {
+        let windows = ws.list_windows();
+        
+        // KLUCZOWA LINIA: Sortujemy okna według faktycznej kolejności na stosie (od spodu do góry)
+        windows = global.display.sort_windows_by_stacking(windows);
+        
+        let foundFullscreen = false;
+        let fullscreenZIndex = -1;
+        let focusedZIndex = -1;
+
+        for (let i = 0; i < windows.length; i++) {
+            const win = windows[i];
             if (win.minimized || win.is_hidden()) continue;
             if (win.get_monitor() !== this._monitor.index) continue;
 
-            if (this._windowIsFullscreen(win)) return true;
+            // Zapisujemy pozycję aktywnego okna na stosie
+            if (win.has_focus()) {
+                focusedZIndex = i;
+            }
+
+            // Korzystamy z Twojej funkcji sprawdzającej wymiary gry
+            if (this._windowIsFullscreen(win)) {
+                foundFullscreen = true;
+                fullscreenZIndex = i;
+            }
         }
-        return false;
+
+        // Jeśli nie ma żadnej gry na ekranie - pasek działa normalnie
+        if (!foundFullscreen) return false;
+
+        // Jeśli okno z focusem jest WYŻEJ niż gra (np. przeglądarka po Alt+Tab),
+        // to odblokowujemy pasek, bo gra jest "pod spodem".
+        if (focusedZIndex > fullscreenZIndex) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -305,7 +336,9 @@ export const Intellihide = GObject.registerClass({
     _queueProximityCheck() {
         if (!this._enabled) return;
         if (this._checkDebounceId) return;
-        this._checkDebounceId = GLib.idle_add(GLib.PRIORITY_LOW, () => {
+        
+        // KLUCZOWE: 250ms opóźnienia, aby przeczekać animację powiększania/minimalizacji okna GNOME
+        this._checkDebounceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
             this._checkDebounceId = 0;
             this._checkProximity();
             return GLib.SOURCE_REMOVE;
@@ -318,10 +351,8 @@ export const Intellihide = GObject.registerClass({
 
         // Jeśli jakiekolwiek okno jest fullscreen → ukryj panel bez dalszego sprawdzania
         if (this._isAnyWindowFullscreen()) {
-            if (this._proximityOverlap !== true) {
-                this._proximityOverlap = true;
-                this._updatePanelVisibility(false);
-            }
+            this._proximityOverlap = true;
+            this._updatePanelVisibility(false); // BUG FIX: Zawsze aktualizuj stan, bez wględu na to, co było wcześniej
             return;
         }
 
@@ -348,10 +379,8 @@ export const Intellihide = GObject.registerClass({
             }
         }
 
-        if (overlap !== this._proximityOverlap) {
-            this._proximityOverlap = overlap;
-            this._updatePanelVisibility(false);
-        }
+        this._proximityOverlap = overlap;
+        this._updatePanelVisibility(false); // Zawsze na nowo weryfikuj ukrywanie/pokazywanie
     }
 
     _getGeometry() {
