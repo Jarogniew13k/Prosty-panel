@@ -1,4 +1,4 @@
-// Prosty Panel — classicpanel.js (Z przywróconym sygnałem reorder-running i bezpiecznym zamykaniem)
+// Prosty Panel — classicpanel.js (Z natywnym śledzeniem języka klawiatury)
 
 import GObject from 'gi://GObject';
 import St      from 'gi://St';
@@ -7,6 +7,7 @@ import GLib    from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as Util from 'resource:///org/gnome/shell/misc/util.js';
+import * as Keyboard from 'resource:///org/gnome/shell/ui/status/keyboard.js';
 
 import { PANEL_HEIGHT }       from './constants.js';
 import { makeSep, openMenuAboveBar } from './utils.js';
@@ -85,27 +86,8 @@ function buildExtraStatus(host) {
     box.add_child(recBtn);
     box.add_child(kbdBtn);
 
-    let kbdLabelActor = null;
-    let kbdTextSignal = 0;
+    let kbdSourceSignal = 0;
     let recTimerId = 0;
-
-    const findKbdLabel = () => {
-        const kbd = Main.panel.statusArea.keyboard;
-        if (!kbd) return null;
-        if (kbd._label instanceof St.Label) return kbd._label;
-        if (kbd._indicator instanceof St.Label) return kbd._indicator;
-        
-        let found = null;
-        const walk = (actor) => {
-            if (found) return;
-            if (actor instanceof St.Label && actor.get_text()) { found = actor; return; }
-            if (typeof actor.get_children === 'function') {
-                for (const c of actor.get_children()) walk(c);
-            }
-        };
-        walk(kbd);
-        return found;
-    };
 
     const syncRec = () => {
         if (host._panelDestroyed) return;
@@ -152,6 +134,7 @@ function buildExtraStatus(host) {
         }
     };
 
+    // NATYWNE OBSŁUGIWANIE KLAWIATURY
     const syncKbd = () => {
         if (host._panelDestroyed) return;
         const kbd = Main.panel.statusArea.keyboard;
@@ -162,17 +145,37 @@ function buildExtraStatus(host) {
         
         kbdBtn.visible = kbd.visible;
 
-        if (!kbdLabelActor) {
-            kbdLabelActor = findKbdLabel();
-            if (kbdLabelActor) {
-                kbdTextSignal = kbdLabelActor.connect('notify::text', () => {
-                    if (!host._panelDestroyed) kbdLabel.set_text(kbdLabelActor.get_text());
+        if (!kbdSourceSignal) {
+            try {
+                // Podłączamy się bezpośrednio do menedżera języków GNOME
+                const ism = Keyboard.getInputSourceManager();
+                if (ism) {
+                    const updateLabel = () => {
+                        if (host._panelDestroyed) return;
+                        if (ism.currentSource && ism.currentSource.shortName) {
+                            kbdLabel.set_text(ism.currentSource.shortName);
+                        }
+                    };
+                    // Nasłuchujemy sygnału systemowego o zmianie języka
+                    kbdSourceSignal = ism.connect('current-source-changed', updateLabel);
+                    host._signalIds.push([ism, kbdSourceSignal]);
+                    updateLabel();
+                }
+            } catch (e) {
+                // Fallback: jeśli GNOME zmieni API, skanuj label co pół sekundy
+                console.log('[Prosty Panel] Użyto fallbacku dla klawiatury', e);
+                kbdSourceSignal = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+                    if (host._panelDestroyed) return GLib.SOURCE_REMOVE;
+                    if (kbd.visible) {
+                        let text = '';
+                        if (kbd._indicator && typeof kbd._indicator.get_text === 'function') text = kbd._indicator.get_text();
+                        else if (kbd._label && typeof kbd._label.get_text === 'function') text = kbd._label.get_text();
+                        if (text) kbdLabel.set_text(text);
+                    }
+                    return GLib.SOURCE_CONTINUE;
                 });
-                host._signalIds.push([kbdLabelActor, kbdTextSignal]);
-                kbdLabel.set_text(kbdLabelActor.get_text());
+                host._signalIds.push([null, kbdSourceSignal]);
             }
-        } else {
-            kbdLabel.set_text(kbdLabelActor.get_text());
         }
     };
 
@@ -206,7 +209,7 @@ export const BottomTaskbar = GObject.registerClass({
         'menu-closed': {}, 
         'drag-start': {}, 
         'drag-end': {},
-        'reorder-running': { param_types: [GObject.TYPE_JSOBJECT] } // Przywrócony sygnał!
+        'reorder-running': { param_types: [GObject.TYPE_JSOBJECT] }
     },
 }, class BottomTaskbar extends St.BoxLayout {
     _init(settings) {
@@ -335,7 +338,13 @@ export const BottomTaskbar = GObject.registerClass({
         }
         for (const btn of this._buttons.values()) btn.destroy();
         this._buttons.clear();
-        for (const [obj, id] of this._signalIds) { try { obj.disconnect(id); } catch(e) {} }
+        for (const [obj, id] of this._signalIds) { 
+            try { 
+                // Specjalne zabezpieczenie dla timeoutów dodanych w try-catch fallbacku
+                if (obj === null) GLib.source_remove(id);
+                else obj.disconnect(id); 
+            } catch(e) {} 
+        }
         this._signalIds = [];
         this._clock?.stopClock();
         if (this._readyTimer) { GLib.source_remove(this._readyTimer); this._readyTimer = 0; }
