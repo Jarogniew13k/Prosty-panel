@@ -1,4 +1,4 @@
-// Prosty Panel — appbutton.js (Wersja Ostateczna i Stabilna z opóźnionym odpinaniem)
+// Prosty Panel — appbutton.js (Wersja Ostateczna z ochroną animacji przed zniszczeniem)
 
 import GObject  from 'gi://GObject';
 import St       from 'gi://St';
@@ -11,6 +11,15 @@ import * as PopupMenu    from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import { ICON_SIZE, HOVER_DELAY_MS, HIDE_DELAY_MS, PREVIEW_W, PREVIEW_H } from './constants.js';
 import { openMenuAboveBar } from './utils.js';
+
+// BEZPIECZNIK: Zatrzymuje wszystkie animacje przed usunięciem obiektu, zapobiegając błędom "detached actors"
+function killAllTransitions(actor) {
+    if (!actor) return;
+    try { actor.remove_all_transitions(); } catch (e) {}
+    if (typeof actor.get_children === 'function') {
+        actor.get_children().forEach(killAllTransitions);
+    }
+}
 
 export const AppButton = GObject.registerClass(
 class AppButton extends St.Button {
@@ -224,8 +233,6 @@ class AppButton extends St.Button {
         
         const pinItem = new PopupMenu.PopupMenuItem(isFav ? 'Odepnij' : 'Przypnij');
         pinItem.connect('activate', () => { 
-            // FIX: Opóźniamy zmianę ulubionych, aby GNOME zdążyło bezpiecznie zamknąć menu,
-            // zanim przycisk zostanie zniszczony przez przebudowę paska.
             GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
                 isFav ? favs.removeFavorite(appId) : favs.addFavorite(appId);
                 return GLib.SOURCE_REMOVE;
@@ -278,7 +285,13 @@ class AppButton extends St.Button {
                     if (this._isDestroyed) return;
                     if (this.hover && this._previewPopup) {
                         const currentWs = global.workspace_manager.get_active_workspace();
-                        this._showWindowPreview(this._app.get_windows().filter(w => w.get_workspace() === currentWs));
+                        const currentWins = this._app.get_windows().filter(w => w.get_workspace() === currentWs);
+                        if (currentWins.length > 0) {
+                            this._showWindowPreview(currentWins);
+                        } else {
+                            this._hideWindowPreview();
+                            if (this.hover) this._showTooltip();
+                        }
                     }
                 });
             }
@@ -293,42 +306,79 @@ class AppButton extends St.Button {
         if (!this._previewPopup) {
             this._emitBarSignal('menu-opened');
         } else {
-            this._hideWindowPreview();
-            this._emitBarSignal('menu-opened'); 
+            const oldPopup = this._previewPopup;
+            if (this._previewHoverTimer) { 
+                GLib.source_remove(this._previewHoverTimer); 
+                this._previewHoverTimer = null; 
+            }
+            // Zabezpieczenie przed błędem detached actor
+            if (!oldPopup.get_stage()) {
+                if (oldPopup.get_parent()) Main.uiGroup.remove_child(oldPopup);
+                killAllTransitions(oldPopup);
+                oldPopup.destroy();
+            } else {
+                oldPopup.ease({ 
+                    opacity: 0, 
+                    duration: 100, 
+                    mode: Clutter.AnimationMode.EASE_OUT_QUAD, 
+                    onStopped: () => { 
+                        killAllTransitions(oldPopup);
+                        if (oldPopup.get_parent()) Main.uiGroup.remove_child(oldPopup); 
+                        oldPopup.destroy(); 
+                    } 
+                });
+            }
         }
 
         const popup = new St.BoxLayout({ style_class : 'tb-preview-popup', reactive : true, track_hover : true, y_align : Clutter.ActorAlign.CENTER });
         const tc = this._getThemeClass(); if (tc) popup.add_style_class_name(tc);
+        
         for (const win of wins) {
             const cell = new St.Button({ style_class : 'tb-preview-cell', reactive : true, can_focus : true, track_hover : true });
             const wrapper = new St.Widget({ layout_manager : new Clutter.BinLayout(), width : PREVIEW_W, height : PREVIEW_H });
             const actor = win.get_compositor_private();
+            
             if (actor) {
                 const [winW, winH] = win.get_frame_rect() ? [win.get_frame_rect().width, win.get_frame_rect().height] : actor.get_size();
                 const scale = Math.min(1.0, (PREVIEW_W - 8) / Math.max(winW, 1), (PREVIEW_H - 30) / Math.max(winH, 1));
                 const clone = new Clutter.Clone({ source: actor, width: winW * scale, height: winH * scale, x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER, x_expand: true, y_expand: true });
                 wrapper.add_child(clone);
             }
+            
             const appName = this._app.get_name();
             const winTitle = win.get_title();
             const fullTitle = (winTitle && winTitle !== appName) ? `${appName} - ${winTitle}` : appName;
             const title = new St.Label({ text: fullTitle, style_class: 'tb-preview-title', x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.START, x_expand: true });
             title.clutter_text.ellipsize = 3; 
             wrapper.add_child(title);
+            
             const closeBtn = new St.Button({ style_class: 'tb-preview-close-btn', child: new St.Icon({ icon_name: 'window-close-symbolic', icon_size: 14 }), x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.START, x_expand: true, y_expand: true, reactive: true, can_focus: true, style: 'background-color: rgba(0,0,0,0.6); border-radius: 99px; padding: 4px; margin: 2px;' });
-            closeBtn.connect('clicked', () => { win.delete(global.get_current_time()); this._hideWindowPreview(); });
+            closeBtn.connect('clicked', () => { win.delete(global.get_current_time()); });
             wrapper.add_child(closeBtn);
+            
             cell.set_child(wrapper);
-            cell.connect('clicked', () => { this._hideWindowPreview(); Main.activateWindow(win); });
-            cell.connect('button-press-event', (_a, ev) => { if (ev.get_button() === 2) { win.delete(global.get_current_time()); this._hideWindowPreview(); return Clutter.EVENT_STOP; } return Clutter.EVENT_PROPAGATE; });
+            
+            cell.connect('clicked', () => { 
+                this._hideWindowPreview(); 
+                Main.activateWindow(win); 
+            });
+            cell.connect('button-press-event', (_a, ev) => { 
+                if (ev.get_button() === 2) { 
+                    win.delete(global.get_current_time()); 
+                    return Clutter.EVENT_STOP; 
+                } 
+                return Clutter.EVENT_PROPAGATE; 
+            });
+            
             popup.add_child(cell);
         }
+        
         Main.uiGroup.add_child(popup); popup.opacity = 0;
         
         GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-            if (this._isDestroyed || !this._previewPopup) return GLib.SOURCE_REMOVE;
-            const [ax, ay] = this.get_transformed_position();
+            if (this._isDestroyed || !this._previewPopup || this._previewPopup !== popup) return GLib.SOURCE_REMOVE;
             
+            const [ax, ay] = this.get_transformed_position();
             const [minW, pw] = popup.get_preferred_width(-1);
             const [minH, ph] = popup.get_preferred_height(-1);
             
@@ -350,16 +400,21 @@ class AppButton extends St.Button {
                     this._previewHoverTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, HIDE_DELAY_MS, () => {
                         this._previewHoverTimer = null; 
                         if (this._isDestroyed || !this._previewPopup) return GLib.SOURCE_REMOVE;
-                        this._hideWindowPreview(); return GLib.SOURCE_REMOVE;
+                        this._hideWindowPreview(); 
+                        return GLib.SOURCE_REMOVE;
                     });
                 }
             } catch (e) {}
         });
+        
         this._previewPopup = popup;
     }
 
     _hideWindowPreview() {
-        if (this._winSignalId) { this._app.disconnect(this._winSignalId); this._winSignalId = null; }
+        if (this._winSignalId) { 
+            this._app.disconnect(this._winSignalId); 
+            this._winSignalId = null; 
+        }
         const popup = this._previewPopup; 
         if (!popup) return; 
 
@@ -367,7 +422,24 @@ class AppButton extends St.Button {
 
         this._previewPopup = null;
         if (this._previewHoverTimer) { GLib.source_remove(this._previewHoverTimer); this._previewHoverTimer = null; }
-        popup.ease({ opacity: 0, duration: 100, mode: Clutter.AnimationMode.EASE_OUT_QUAD, onStopped: () => { if (popup.get_parent()) Main.uiGroup.remove_child(popup); popup.destroy(); } });
+        
+        // Zabezpieczenie przed błędem detached actor
+        if (!popup.get_stage()) {
+            if (popup.get_parent()) Main.uiGroup.remove_child(popup);
+            killAllTransitions(popup);
+            popup.destroy();
+        } else {
+            popup.ease({ 
+                opacity: 0, 
+                duration: 100, 
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD, 
+                onStopped: () => { 
+                    killAllTransitions(popup);
+                    if (popup.get_parent()) Main.uiGroup.remove_child(popup); 
+                    popup.destroy(); 
+                } 
+            });
+        }
     }
 
     _showTooltip() {
@@ -386,6 +458,25 @@ class AppButton extends St.Button {
 
     _hideTooltip() { if (this._isDestroyed) return; this._tooltip.ease({ opacity: 0, duration: 80 }); }
 
+    updateState(running, active) {
+        if (this._isDestroyed) return;
+        this.remove_style_class_name('running'); 
+        this.remove_style_class_name('active');
+        
+        // Zabezpieczenie dla 100ms kropki
+        const hasStage = this._dot && this._dot.get_stage() !== null;
+        
+        if (running) { 
+            this.add_style_class_name('running'); 
+            if (hasStage) this._dot.ease({ width: active ? 20 : 5, duration: 150 });
+            else this._dot.width = active ? 20 : 5;
+        } else { 
+            if (hasStage) this._dot.ease({ width: 0, duration: 100 });
+            else this._dot.width = 0;
+        }
+        if (active) this.add_style_class_name('active');
+    }
+
     _onClick() {
         if (this._isDestroyed) return;
         const ws = global.workspace_manager.get_active_workspace();
@@ -395,16 +486,12 @@ class AppButton extends St.Button {
         else { const f = wins.find(w => w.has_focus()); Main.activateWindow(f ? wins[(wins.indexOf(f) + 1) % wins.length] : wins[0]); }
     }
 
-    updateState(running, active) {
-        if (this._isDestroyed) return;
-        this.remove_style_class_name('running'); this.remove_style_class_name('active');
-        if (running) { this.add_style_class_name('running'); this._dot.ease({ width: active ? 20 : 5, duration: 150 }); }
-        else this._dot.ease({ width: 0, duration: 100 });
-        if (active) this.add_style_class_name('active');
-    }
-
     _onDestroy() {
         this._isDestroyed = true; 
+        
+        // ZABICIE ANIMACJI GŁÓWNEGO PRZYCISKU (Fix na błędy 100ms przy odpinaniu)
+        killAllTransitions(this);
+        
         if (this._press) { if (this._press.motionId) global.stage.disconnect(this._press.motionId); if (this._press.releaseId) global.stage.disconnect(this._press.releaseId); }
         if (this._dragActor) this._dragActor.destroy();
         if (this._dropMarker) { if (this._dropMarker.get_parent()) Main.uiGroup.remove_child(this._dropMarker); this._dropMarker.destroy(); }
@@ -416,15 +503,14 @@ class AppButton extends St.Button {
         
         if (this._previewPopup) {
             this._emitBarSignal('menu-closed');
-            
-            this._previewPopup.remove_all_transitions();
+            killAllTransitions(this._previewPopup);
             if (this._previewPopup.get_parent()) Main.uiGroup.remove_child(this._previewPopup); 
             this._previewPopup.destroy();
             this._previewPopup = null;
         }
         
         if (this._tooltip) { 
-            this._tooltip.remove_all_transitions();
+            killAllTransitions(this._tooltip);
             if (this._tooltip.get_parent()) Main.layoutManager.removeChrome(this._tooltip); 
             this._tooltip.destroy(); 
         }
