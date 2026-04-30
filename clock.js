@@ -64,6 +64,9 @@ export function buildClock(host) {
 
     let timer = 0;
     let syncTimer = 0;
+    
+    // BŁĄD DUCHA FIX: Trzymamy sygnały powiadomień w prywatnej mapie, by móc je bezpiecznie czyścić
+    let sourceSignals = new Map(); 
 
     const updateClock = () => {
         const now = GLib.DateTime.new_now_local();
@@ -91,6 +94,12 @@ export function buildClock(host) {
     const stopClock = () => {
         if (syncTimer) { GLib.source_remove(syncTimer); syncTimer = 0; }
         if (timer) { GLib.source_remove(timer); timer = 0; }
+
+        // Odłączamy się bezpiecznie od wszystkich żywych powiadomień podczas usuwania paska
+        for (const [src, id] of sourceSignals.entries()) {
+            try { src.disconnect(id); } catch(e) {}
+        }
+        sourceSignals.clear();
     };
 
     const bindNotifications = () => {
@@ -108,13 +117,24 @@ export function buildClock(host) {
         };
 
         const onSourceAdded = (t, src) => {
+            if (sourceSignals.has(src)) return;
             const id = src.connect('notify::count', updateDot);
-            host._signalIds.push([src, id]);
+            sourceSignals.set(src, id); // Zapisujemy u siebie, nie w gnieździe głównym
+            updateDot();
+        };
+
+        // NOWE: Kiedy powiadomienie znika (jest niszczone przez GNOME), zapominamy o nim
+        const onSourceRemoved = (t, src) => {
+            if (sourceSignals.has(src)) {
+                const id = sourceSignals.get(src);
+                try { src.disconnect(id); } catch(e) {}
+                sourceSignals.delete(src);
+            }
             updateDot();
         };
 
         host._signalIds.push([tray, tray.connect('source-added', onSourceAdded)]);
-        host._signalIds.push([tray, tray.connect('source-removed', updateDot)]);
+        host._signalIds.push([tray, tray.connect('source-removed', onSourceRemoved)]); // Wpinamy sprzątacza
         host._signalIds.push([tray, tray.connect('queue-changed', updateDot)]);
 
         for (const src of tray.getSources()) {
