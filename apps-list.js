@@ -1,4 +1,4 @@
-// Prosty Panel — apps-list.js (Z obsługą przeciągania z Overview / App Grid)
+// Prosty Panel — apps-list.js (Z obsługą przeciągania z Overview / App Grid i bezpiecznikiem tworzenia okien)
 
 import St      from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -136,9 +136,16 @@ export function buildAppsList(host) {
         host._signalIds.push([sys,     sys.connect('app-state-changed',     () => rebuildApps())]);
         host._signalIds.push([tracker, tracker.connect('notify::focus-app', () => updateStates())]);
         host._signalIds.push([favs,    favs.connect('changed',              () => rebuildApps())]);
+        
+        // Zabezpieczone przed zniszczeniem paska
         host._signalIds.push([display, display.connect('window-created',    () => {
-            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => { rebuildApps(); return GLib.SOURCE_REMOVE; });
+            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => { 
+                if (host._panelDestroyed) return GLib.SOURCE_REMOVE; 
+                rebuildApps(); 
+                return GLib.SOURCE_REMOVE; 
+            });
         })]);
+        
         host._signalIds.push([wm, wm.connect('minimize',  () => updateStates())]);
         host._signalIds.push([wm, wm.connect('unminimize',() => updateStates())]);
 
