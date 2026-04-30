@@ -38,19 +38,20 @@ export function buildActivities() {
     btn._menu = new PopupMenu.PopupMenu(btn, 0.5, St.Side.BOTTOM);
     Main.uiGroup.add_child(btn._menu.actor);
     btn._menu.actor.hide();
+
     btn._menuMgr = new PopupMenu.PopupMenuManager(btn);
     btn._menuMgr.addMenu(btn._menu);
 
     const addMenuItem = (label, cmd) => {
         const item = new PopupMenu.PopupMenuItem(label);
         item.connect('activate', () => {
-            btn._menu.close();
+            // FIX: Usunięto btn._menu.close() – GNOME zamknie menu samo
             if (cmd) Util.spawnCommandLine(cmd);
         });
         btn._menu.addMenuItem(item);
     };
 
-    // Zwrócone opcje z NAPRAWIONĄ komendą dla GNOME 46+
+    // Opcje systemowe z komendami
     addMenuItem('Opcje zasilania', 'gnome-control-center power');
     addMenuItem('Dziennik zdarzeń', 'gnome-logs');
     addMenuItem('System', 'gnome-control-center system');
@@ -76,18 +77,11 @@ export function buildActivities() {
     });
 
     btn.connect('button-press-event', (_actor, event) => {
-        if (event.get_button() === 3) {
+        if (event.get_button() === 3) { // Prawy Przycisk Myszy
             openMenuAboveBar(btn._menu, btn, 4, null, true);
             return Clutter.EVENT_STOP;
         }
         return Clutter.EVENT_PROPAGATE;
-    });
-
-    btn.connect('destroy', () => {
-        if (btn._menu) {
-            btn._menu.destroy();
-            btn._menu = null;
-        }
     });
 
     return btn;
