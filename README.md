@@ -1,0 +1,2 @@
+# Prosty-panel
+Gnome extension
