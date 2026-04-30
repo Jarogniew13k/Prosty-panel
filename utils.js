@@ -30,7 +30,6 @@ export function makeIconBtn(iconName, styleClass = 'tb-btn') {
     });
 }
 
-// Dodano nowy opcjonalny parametr: pointerX
 export function openMenuAboveBar(menu, sourceButton, gap = PANEL_GAP, rightAnchor = null, centerOnSource = false, pointerX = null) {
     if (!menu) return;
     if (menu.isOpen) {
@@ -49,8 +48,8 @@ export function openMenuAboveBar(menu, sourceButton, gap = PANEL_GAP, rightAncho
 
     const mon = Main.layoutManager.primaryMonitor;
 
-    const panel = _getBarFor(sourceButton);
-    const isFloating = panel && panel.has_style_class_name('mode-floating');
+    const bar = _getBarFor(sourceButton);
+    const isFloating = bar && bar.has_style_class_name('mode-floating');
     const FLOAT_MARGIN = 8; 
 
     let barTop;
@@ -88,12 +87,9 @@ export function openMenuAboveBar(menu, sourceButton, gap = PANEL_GAP, rightAncho
             const h = allocationBox.get_height();
             let stageX;
 
-            // Całkowicie nowa logika ustalania pozycji horyzontalnej
             if (pointerX !== null) {
-                // Jeśli podano koordynaty myszki - wyśrodkuj na kursorze
                 stageX = pointerX - (w / 2);
             } else if (centerOnSource && sourceButton) {
-                // Prawidłowe wyśrodkowanie okienka względem przycisku
                 const [bx] = sourceButton.get_transformed_position();
                 const bw = sourceButton.width;
                 stageX = bx + (bw / 2) - (w / 2);
@@ -109,7 +105,6 @@ export function openMenuAboveBar(menu, sourceButton, gap = PANEL_GAP, rightAncho
                 }
             }
 
-            // Ochrona przed "wyjechaniem" okienka poza ekran
             const minX = mon.x + 4;
             const maxX = mon.x + mon.width - w - 4;
             if (stageX < minX) stageX = minX;
@@ -139,11 +134,14 @@ export function openMenuAboveBar(menu, sourceButton, gap = PANEL_GAP, rightAncho
     menu.close = function(a) {
         return origMenuClose.call(this, POPUP_ANIM_FADE);
     };
+    
     menu.open();
 
-    _emitBarSignalFor(sourceButton, 'menu-opened');
-    const bar = _getBarFor(sourceButton);
-    if (bar) bar._openMenus.add(menu);
+    // 🟢 NATYCHMIASTOWE WYŁAPANIE PASKA
+    if (bar) {
+        bar._openMenus.add(menu);
+        try { bar.emit('menu-opened'); } catch (e) {}
+    }
 
     const closedId = menu.connect('menu-closed', () => {
         menu.disconnect(closedId);
@@ -166,8 +164,12 @@ export function openMenuAboveBar(menu, sourceButton, gap = PANEL_GAP, rightAncho
             }
             bp.set_style(null);
         }
-        if (bar) bar._openMenus.delete(menu);
-        _emitBarSignalFor(sourceButton, 'menu-closed');
+        
+        // 🟢 UŻYCIE ZAPAMIĘTANEGO PASKA (bez szukania go po oderwanym przycisku)
+        if (bar) {
+            bar._openMenus.delete(menu);
+            try { bar.emit('menu-closed'); } catch (e) {}
+        }
     });
 }
 
@@ -178,11 +180,4 @@ function _getBarFor(sourceActor) {
         p = p.get_parent ? p.get_parent() : null;
     }
     return null;
-}
-
-function _emitBarSignalFor(sourceActor, name) {
-    const bar = _getBarFor(sourceActor);
-    if (bar) {
-        try { bar.emit(name); } catch (e) { console.debug('[Prosty Panel] Error:', e); }
-    }
 }
