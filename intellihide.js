@@ -1,4 +1,4 @@
-// Prosty Panel — intellihide.js
+// Prosty Panel — intellihide.js 
 
 import Clutter from 'gi://Clutter';
 import GLib    from 'gi://GLib';
@@ -9,7 +9,6 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PointerWatcher from 'resource:///org/gnome/shell/ui/pointerWatcher.js';
 
 const CHECK_POINTER_MS   = 50;
-const PROXIMITY_CHECK_MS = 300;
 const ANIMATION_TIME     = 150;
 const HIDE_DELAY         = 400;
 const SHOW_DELAY_MS      = 0;
@@ -40,13 +39,17 @@ export const Intellihide = GObject.registerClass({
         this._hideTimer        = null;
         this._showTimer        = null;
         this._pointerWatchId   = 0;
-        this._proximityTimer   = 0;
-        this._signalIds        = [];
+        
+        // Tablice do trzymania sygnałów z proximity
+        this._generalSignals   = [];
+        this._trackedWin       = null;
+        this._trackedWinSignals= [];
+        this._checkDebounceId  = 0;
     }
 
     updateTargetBox(box) {
         this._targetBox = box;
-        if (this._enabled) this._checkProximity();
+        if (this._enabled) this._queueProximityCheck();
     }
 
     enable() {
@@ -64,36 +67,31 @@ export const Intellihide = GObject.registerClass({
             (x, y) => this._onPointerMove(x, y)
         );
 
-        this._proximityTimer = GLib.timeout_add(
-            GLib.PRIORITY_DEFAULT,
-            PROXIMITY_CHECK_MS,
-            () => {
-                this._checkProximity();
-                return GLib.SOURCE_CONTINUE;
-            }
-        );
+        // -- PODPINAMY SIĘ POD EVENTY (jak w proximity.js) --
+        const bind = (obj, sig, callback) => {
+            const id = obj.connect(sig, callback);
+            this._generalSignals.push({ obj, id });
+        };
 
-        this._signalIds.push([this._taskbar, this._taskbar.connect('menu-opened', () => {
-            this.revealAndHold();
-        })]);
-        this._signalIds.push([this._taskbar, this._taskbar.connect('menu-closed', () => {
-            this.release();
-        })]);
-        this._signalIds.push([this._taskbar, this._taskbar.connect('drag-start', () => {
-            this.revealAndHold();
-        })]);
-        this._signalIds.push([this._taskbar, this._taskbar.connect('drag-end', () => {
-            this.release();
-        })]);
+        bind(this._taskbar, 'menu-opened', () => this.revealAndHold());
+        bind(this._taskbar, 'menu-closed', () => this.release());
+        bind(this._taskbar, 'drag-start',  () => this.revealAndHold());
+        bind(this._taskbar, 'drag-end',    () => this.release());
 
-        this._signalIds.push([Main.overview, Main.overview.connect('showing', () => {
-            if (this._enabled) this._updatePanelVisibility(true);
-        })]);
-        this._signalIds.push([Main.overview, Main.overview.connect('hidden', () => {
-            if (this._enabled) this._updatePanelVisibility(false);
-        })]);
+        bind(Main.overview, 'showing', () => { if (this._enabled) this._updatePanelVisibility(true); });
+        bind(Main.overview, 'hidden',  () => { this._queueProximityCheck(); if (this._enabled) this._updatePanelVisibility(false); });
 
+        // Główne sygnały okien
+        bind(global.display, 'notify::focus-window', () => {
+            this._updateTrackedWindow();
+            this._queueProximityCheck();
+        });
+        bind(global.display, 'restacked', () => this._queueProximityCheck());
+        bind(global.window_manager, 'switch-workspace', () => this._queueProximityCheck());
+
+        this._updateTrackedWindow();
         this._updatePanelVisibility(true);
+        this._queueProximityCheck();
     }
 
     disable() {
@@ -101,27 +99,18 @@ export const Intellihide = GObject.registerClass({
         this._enabled = false;
 
         if (this._pointerWatchId) {
-            try {
-                PointerWatcher.getPointerWatcher().removeWatch(this._pointerWatchId);
-            } catch (e) { console.debug('[Prosty Panel] Error removing pointer watch:', e); }
+            try { PointerWatcher.getPointerWatcher().removeWatch(this._pointerWatchId); } catch (e) {}
             this._pointerWatchId = 0;
         }
-        if (this._proximityTimer) {
-            GLib.source_remove(this._proximityTimer);
-            this._proximityTimer = 0;
+        if (this._hideTimer) { GLib.source_remove(this._hideTimer); this._hideTimer = null; }
+        if (this._showTimer) { GLib.source_remove(this._showTimer); this._showTimer = null; }
+        if (this._checkDebounceId) { GLib.source_remove(this._checkDebounceId); this._checkDebounceId = 0; }
+
+        for (const sig of this._generalSignals) {
+            try { sig.obj.disconnect(sig.id); } catch(e) {}
         }
-        if (this._hideTimer) {
-            GLib.source_remove(this._hideTimer);
-            this._hideTimer = null;
-        }
-        if (this._showTimer) {
-            GLib.source_remove(this._showTimer);
-            this._showTimer = null;
-        }
-        for (const [obj, id] of this._signalIds) {
-            try { obj.disconnect(id); } catch (e) { console.debug('[Prosty Panel] Error disconnecting signal:', e); }
-        }
-        this._signalIds = [];
+        this._generalSignals = [];
+        this._clearTrackedWindow();
 
         this._panel.remove_all_transitions();
         this._panel.show();
@@ -141,9 +130,7 @@ export const Intellihide = GObject.registerClass({
 
     release(immediate = false) {
         if (!this._enabled) return;
-        if (this._holdCounter > 0) {
-            this._holdCounter--;
-        }
+        if (this._holdCounter > 0) this._holdCounter--;
         this._updatePanelVisibility(immediate);
     }
 
@@ -152,14 +139,79 @@ export const Intellihide = GObject.registerClass({
         this.enable();
     }
 
+    // --- TRACKOWANIE AKTYWNEGO OKNA ---
+    _updateTrackedWindow() {
+        this._clearTrackedWindow();
+        const win = global.display.focus_window;
+        if (win) {
+            this._trackedWin = win;
+            // Dodano nasłuchiwanie na maksymalizację (błyskawiczna reakcja)
+            const signals = [
+                'size-changed', 
+                'position-changed', 
+                'notify::maximized-horizontally', 
+                'notify::maximized-vertically',
+                'notify::fullscreen'
+            ];
+            for (const sig of signals) {
+                this._trackedWinSignals.push(win.connect(sig, () => this._queueProximityCheck()));
+            }
+        }
+    }
+
+    _clearTrackedWindow() {
+        if (this._trackedWin) {
+            for (const id of this._trackedWinSignals) {
+                try { this._trackedWin.disconnect(id); } catch(e) {}
+            }
+        }
+        this._trackedWin = null;
+        this._trackedWinSignals = [];
+    }
+
+    _queueProximityCheck() {
+        if (!this._enabled) return;
+        if (this._checkDebounceId) return;
+        this._checkDebounceId = GLib.idle_add(GLib.PRIORITY_LOW, () => {
+            this._checkDebounceId = 0;
+            this._checkProximity();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
     _isFullscreen() {
-        const ws = global.workspace_manager.get_active_workspace();
-        const windows = ws.list_windows();
-        return windows.some(win => win.fullscreen && win.get_monitor() === this._monitor.index);
+        const activeWin = global.display.focus_window;
+        if (!activeWin) return false;
+        if (activeWin.get_monitor() !== this._monitor.index) return false;
+
+        // F11 lub czysty tryb pełnoekranowy (Gry, YouTube)
+        if (activeWin.fullscreen) return true;
+
+        const rect = activeWin.get_frame_rect();
+        const mon = this._monitor;
+        const isFullscreenSize = (rect.x <= mon.x && rect.y <= mon.y &&
+                                  rect.width >= mon.width &&
+                                  rect.height >= mon.height);
+
+        if (isFullscreenSize) {
+            // KLUCZOWA POPRAWKA: Rozróżniamy zmakymalizowaną przeglądarkę od gry.
+            // Jeśli użytkownik "zmaksmalizował" okno, odblokowujemy hover.
+            if (activeWin.maximized_horizontally && activeWin.maximized_vertically) {
+                return false; 
+            }
+
+            const type = activeWin.get_window_type();
+            if (type <= Meta.WindowType.SPLASHSCREEN && type !== Meta.WindowType.DESKTOP) {
+                return true;
+            }
+        }
+        return false;
     }
 
     _onPointerMove(x, y) {
         if (!this._enabled) return;
+        
+        // Zablokuj hover TYLKO jeśli to prawdziwa gra / F11, a nie zmaksymalizowana przeglądarka!
         if (this._isFullscreen()) return;
 
         const mon = this._monitor;
@@ -170,26 +222,23 @@ export const Intellihide = GObject.registerClass({
             const [px, py] = this._panel.get_transformed_position();
             const pw = this._panel.width;
             const ph = this._panel.height;
-            const left   = px - HOVER_EXTEND_HORIZONTAL;
-            const right  = px + pw + HOVER_EXTEND_HORIZONTAL;
-            const top    = py - HOVER_EXTEND_TOP;
-            const bottom = py + ph + HOVER_EXTEND_BOTTOM;
-            isOverPanel = (x >= left && x <= right && y >= top && y <= bottom);
+            isOverPanel = (x >= px - HOVER_EXTEND_HORIZONTAL && 
+                           x <= px + pw + HOVER_EXTEND_HORIZONTAL && 
+                           y >= py - HOVER_EXTEND_TOP && 
+                           y <= py + ph + HOVER_EXTEND_BOTTOM);
         }
 
         if (!isOverPanel) {
             let actor = global.stage.get_actor_at_pos(Clutter.PickMode.ALL, x, y);
             while (actor) {
                 if (actor.has_style_class_name && actor.has_style_class_name('tb-arrow')) {
-                    isOverPanel = true;
-                    break;
+                    isOverPanel = true; break;
                 }
                 actor = actor.get_parent();
             }
         }
 
         const wantHover = (isAtBottomEdge || isOverPanel);
-
         if (wantHover === this._hover) return;
 
         if (wantHover) {
@@ -202,10 +251,7 @@ export const Intellihide = GObject.registerClass({
                 return GLib.SOURCE_REMOVE;
             });
         } else {
-            if (this._showTimer) {
-                GLib.source_remove(this._showTimer);
-                this._showTimer = null;
-            }
+            if (this._showTimer) { GLib.source_remove(this._showTimer); this._showTimer = null; }
             if (this._hover) {
                 this._hover = false;
                 this._updatePanelVisibility(false);
@@ -217,6 +263,7 @@ export const Intellihide = GObject.registerClass({
         if (!this._enabled) return;
         if (this._isFullscreen()) return;
         if (!this._panel || this._panel.get_stage() === null || this._panel._panelDestroyed) return;
+        
         const geom = this._getGeometry();
         if (!geom) return;
 
@@ -227,8 +274,9 @@ export const Intellihide = GObject.registerClass({
         for (const win of windows) {
             if (win.minimized || win.is_hidden()) continue;
             if (win.get_monitor() !== this._monitor.index) continue;
+            
             const type = win.get_window_type();
-            if (type === Meta.WindowType.DESKTOP || type === Meta.WindowType.DOCK) continue;
+            if (type > Meta.WindowType.SPLASHSCREEN || type === Meta.WindowType.DESKTOP) continue;
 
             const rect = win.get_frame_rect();
             if (rect.x < geom.x + geom.width &&
@@ -249,30 +297,26 @@ export const Intellihide = GObject.registerClass({
     _getGeometry() {
         if (this._targetBox) {
             return {
-                x          : this._targetBox.x1,
-                y          : this._targetBox.y1,
-                width      : this._targetBox.x2 - this._targetBox.x1,
-                height     : this._targetBox.y2 - this._targetBox.y1,
-                bottomEdge : this._targetBox.y2,
+                x      : this._targetBox.x1,
+                y      : this._targetBox.y1,
+                width  : this._targetBox.x2 - this._targetBox.x1,
+                height : this._targetBox.y2 - this._targetBox.y1,
             };
         }
-        if (!this._panel || this._panel.get_stage() === null || this._panel._panelDestroyed) return null;
-        const mon = this._monitor;
-        const panelHeight = this._panel.height;
-        if (!panelHeight) return null;
+        if (!this._panel) return null;
         const [px, py] = this._panel.get_transformed_position();
         return {
-            x          : px,
-            y          : py,
-            width      : this._panel.width  || mon.width,
-            height     : panelHeight,
-            bottomEdge : mon.y + mon.height,
+            x      : px,
+            y      : py,
+            width  : this._panel.width || this._monitor.width,
+            height : this._panel.height,
         };
     }
 
     _shouldBeVisible() {
         if (Main.overview.visible) return true;
         if (this._holdCounter > 0) return true;
+        if (this._isFullscreen()) return false;
         if (this._hover) return true;
         if (this._proximityOverlap) return false;
         return true;
@@ -283,18 +327,12 @@ export const Intellihide = GObject.registerClass({
         const wantVisible = this._shouldBeVisible();
         if (wantVisible === this._visible && !immediate) return;
 
-        if (wantVisible) {
-            this._showPanel(immediate);
-        } else {
-            this._scheduleHide(immediate);
-        }
+        if (wantVisible) this._showPanel(immediate);
+        else this._scheduleHide(immediate);
     }
 
     _showPanel(immediate) {
-        if (this._hideTimer) {
-            GLib.source_remove(this._hideTimer);
-            this._hideTimer = null;
-        }
+        if (this._hideTimer) { GLib.source_remove(this._hideTimer); this._hideTimer = null; }
         this.emit('showing');
         this._visible = true;
         this._cancelAnimation();
