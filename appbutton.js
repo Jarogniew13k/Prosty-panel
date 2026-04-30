@@ -1,4 +1,4 @@
-// Prosty Panel — appbutton.js (Wersja Ostateczna, wolna od "already disposed")
+// Prosty Panel — appbutton.js (Wersja Ostateczna i Stabilna)
 
 import GObject  from 'gi://GObject';
 import St       from 'gi://St';
@@ -29,7 +29,7 @@ class AppButton extends St.Button {
         this._hideTimerId  = null;
         this._previewHoverTimer = null;
         this._isFavorite   = false;
-        this._isDestroyed  = false; // BŁĄD DUCHA FIX: Flaga życia obiektu
+        this._isDestroyed  = false; 
 
         const box = new St.BoxLayout({
             vertical : true,
@@ -66,7 +66,6 @@ class AppButton extends St.Button {
         if (this._isDestroyed) return Clutter.EVENT_PROPAGATE;
         const btn = ev.get_button();
         
-        // Lewy przycisk (1)
         if (btn === 1) {
             const [sx, sy] = ev.get_coords();
             this._press = { x: sx, y: sy, dragging: false, motionId: 0, releaseId: 0 };
@@ -90,7 +89,6 @@ class AppButton extends St.Button {
             return Clutter.EVENT_STOP;
         }
         
-        // Środkowy przycisk (2)
         if (btn === 2) {
             const state = ev.get_state();
             const isShift = (state & Clutter.ModifierType.SHIFT_MASK) !== 0;
@@ -104,12 +102,10 @@ class AppButton extends St.Button {
             return Clutter.EVENT_STOP;
         }
 
-        // Prawy przycisk (3)
         if (btn === 3) { 
             this._showContextMenu(); 
             return Clutter.EVENT_STOP; 
         }
-        
         return Clutter.EVENT_PROPAGATE;
     }
 
@@ -118,11 +114,9 @@ class AppButton extends St.Button {
         this._isFavorite = AppFavorites.getAppFavorites().isFavorite(this._app.get_id());
         this._press.dragging = true;
         this.opacity = 80;
-
         this._dragActor = new Clutter.Clone({ source: this, width: this.width, height: this.height, opacity: 200 });
         Main.uiGroup.add_child(this._dragActor);
         this._dragActor.set_position(mx - (this.width / 2), my - (this.height / 2));
-
         if (!this._dropMarker) {
             this._dropMarker = new St.Widget({ style_class: 'tb-drop-marker', background_color: new Clutter.Color({ red: 255, green: 255, blue: 255, alpha: 220 }) });
             this._dropMarker.hide();
@@ -138,22 +132,17 @@ class AppButton extends St.Button {
         if (!bar) return;
         const [bx, by] = bar.get_transformed_position();
         if (my < by || my > by + bar.height) { this._dropMarker?.hide(); this._dropTarget = { unfavorite: true }; return; }
-
         const appBox = this.get_parent();
         const buttons = appBox.get_children().filter(c => c instanceof AppButton);
         const favs = AppFavorites.getAppFavorites().getFavorites();
         const favIds = new Set(favs.map(f => f.get_id()));
-        
         const favBtns = buttons.filter(b => favIds.has(b.app.get_id()));
         const runBtns = buttons.filter(b => !favIds.has(b.app.get_id()));
-
         let targetBtns = this._isFavorite ? favBtns : runBtns;
         let baseIndex = this._isFavorite ? 0 : favBtns.length;
-
         let localIdx = targetBtns.length;
         let markerX = 0;
         const [boxX, boxY] = appBox.get_transformed_position();
-
         if (targetBtns.length > 0) {
             markerX = targetBtns[0].get_transformed_position()[0];
             for (let i = 0; i < targetBtns.length; i++) {
@@ -164,7 +153,6 @@ class AppButton extends St.Button {
                 markerX = btnX + b.width;
             }
         } else { markerX = boxX; }
-
         if (this._dropMarker) {
             this._dropMarker.set_size(2, this.height - 12);
             this._dropMarker.set_position(Math.round(markerX - 1), Math.round(boxY + 6));
@@ -179,14 +167,11 @@ class AppButton extends St.Button {
         if (this._dragActor) { this._dragActor.destroy(); this._dragActor = null; }
         if (this._dropMarker) { this._dropMarker.hide(); if (this._dropMarker.get_parent()) Main.uiGroup.remove_child(this._dropMarker); }
         this._emitBarSignal('drag-end');
-
         const target = this._dropTarget; this._dropTarget = null;
         if (!target) return;
         const appId = this._app.get_id();
         const favs = AppFavorites.getAppFavorites();
-
         if (target.unfavorite) { if (this._isFavorite) favs.removeFavorite(appId); return; }
-
         if (this._isFavorite) {
             if (typeof favs.moveFavoriteToPos === 'function') favs.moveFavoriteToPos(appId, target.insertIndex);
         } else {
@@ -220,7 +205,6 @@ class AppButton extends St.Button {
         this._menu.removeAll();
         const app = this._app; const wins = app.get_windows(); const isRun = wins.length > 0;
         const favs = AppFavorites.getAppFavorites(); const appId = app.get_id(); const isFav = favs.isFavorite(appId);
-
         if (isRun) {
             const openItem = new PopupMenu.PopupMenuItem('Otwórz');
             openItem.connect('activate', () => { this._menu.close(); Main.activateWindow(wins[0]); });
@@ -246,18 +230,17 @@ class AppButton extends St.Button {
         if (this._isDestroyed) return;
         if (this._hideTimerId) { GLib.source_remove(this._hideTimerId); this._hideTimerId = null; }
         if (this._hoverTimeout) { GLib.source_remove(this._hoverTimeout); this._hoverTimeout = null; }
-        
         if (this.hover) {
             this._hoverTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, HOVER_DELAY_MS, () => {
                 this._hoverTimeout = null;
-                if (this._isDestroyed) return GLib.SOURCE_REMOVE; // Zabezpieczenie
+                if (this._isDestroyed) return GLib.SOURCE_REMOVE;
                 this._refreshPreview();
                 return GLib.SOURCE_REMOVE;
             });
         } else {
             this._hideTimerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, HIDE_DELAY_MS, () => {
                 this._hideTimerId = null; 
-                if (this._isDestroyed) return GLib.SOURCE_REMOVE; // Zabezpieczenie
+                if (this._isDestroyed) return GLib.SOURCE_REMOVE;
                 if (this.hover || (this._previewPopup && this._previewPopup.hover)) return GLib.SOURCE_REMOVE;
                 this._hideTooltip(); 
                 this._hideWindowPreview(); 
@@ -271,13 +254,10 @@ class AppButton extends St.Button {
         const wins = this._app.get_windows();
         if (wins.length > 0) {
             this._showWindowPreview(wins);
-            
             if (!this._winSignalId) {
                 this._winSignalId = this._app.connect('windows-changed', () => {
-                    if (this._isDestroyed) return; // Zabezpieczenie
-                    if (this.hover && this._previewPopup) {
-                        this._showWindowPreview(this._app.get_windows());
-                    }
+                    if (this._isDestroyed) return;
+                    if (this.hover && this._previewPopup) this._showWindowPreview(this._app.get_windows());
                 });
             }
         } else {
@@ -290,77 +270,33 @@ class AppButton extends St.Button {
         if (this._previewPopup) this._hideWindowPreview();
         const popup = new St.BoxLayout({ style_class : 'tb-preview-popup', reactive : true, track_hover : true, y_align : Clutter.ActorAlign.CENTER });
         const tc = this._getThemeClass(); if (tc) popup.add_style_class_name(tc);
-
         for (const win of wins) {
             const cell = new St.Button({ style_class : 'tb-preview-cell', reactive : true, can_focus : true, track_hover : true });
             const wrapper = new St.Widget({ layout_manager : new Clutter.BinLayout(), width : PREVIEW_W, height : PREVIEW_H });
-            
             const actor = win.get_compositor_private();
             if (actor) {
                 const [winW, winH] = win.get_frame_rect() ? [win.get_frame_rect().width, win.get_frame_rect().height] : actor.get_size();
                 const scale = Math.min(1.0, (PREVIEW_W - 8) / Math.max(winW, 1), (PREVIEW_H - 30) / Math.max(winH, 1));
-                const clone = new Clutter.Clone({ 
-                    source: actor, 
-                    width: winW * scale, 
-                    height: winH * scale, 
-                    x_align: Clutter.ActorAlign.CENTER, 
-                    y_align: Clutter.ActorAlign.CENTER,
-                    x_expand: true, 
-                    y_expand: true 
-                });
+                const clone = new Clutter.Clone({ source: actor, width: winW * scale, height: winH * scale, x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER, x_expand: true, y_expand: true });
                 wrapper.add_child(clone);
             }
-
             const appName = this._app.get_name();
             const winTitle = win.get_title();
             const fullTitle = (winTitle && winTitle !== appName) ? `${appName} - ${winTitle}` : appName;
-
-            const title = new St.Label({ 
-                text: fullTitle, 
-                style_class: 'tb-preview-title', 
-                x_align: Clutter.ActorAlign.CENTER, 
-                y_align: Clutter.ActorAlign.START,
-                x_expand: true
-            });
+            const title = new St.Label({ text: fullTitle, style_class: 'tb-preview-title', x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.START, x_expand: true });
             title.clutter_text.ellipsize = 3; 
             wrapper.add_child(title);
-
-            const closeBtn = new St.Button({
-                style_class: 'tb-preview-close-btn',
-                child: new St.Icon({ icon_name: 'window-close-symbolic', icon_size: 14 }),
-                x_align: Clutter.ActorAlign.END,
-                y_align: Clutter.ActorAlign.START,
-                x_expand: true,
-                y_expand: true,
-                reactive: true,
-                can_focus: true,
-                style: 'background-color: rgba(0,0,0,0.6); border-radius: 99px; padding: 4px; margin: 2px;'
-            });
-            
-            closeBtn.connect('clicked', () => { 
-                win.delete(global.get_current_time()); 
-                this._hideWindowPreview(); 
-            });
+            const closeBtn = new St.Button({ style_class: 'tb-preview-close-btn', child: new St.Icon({ icon_name: 'window-close-symbolic', icon_size: 14 }), x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.START, x_expand: true, y_expand: true, reactive: true, can_focus: true, style: 'background-color: rgba(0,0,0,0.6); border-radius: 99px; padding: 4px; margin: 2px;' });
+            closeBtn.connect('clicked', () => { win.delete(global.get_current_time()); this._hideWindowPreview(); });
             wrapper.add_child(closeBtn);
-
             cell.set_child(wrapper);
             cell.connect('clicked', () => { this._hideWindowPreview(); Main.activateWindow(win); });
-            cell.connect('button-press-event', (_a, ev) => { 
-                if (ev.get_button() === 2) { 
-                    win.delete(global.get_current_time()); 
-                    this._hideWindowPreview(); 
-                    return Clutter.EVENT_STOP; 
-                } 
-                return Clutter.EVENT_PROPAGATE; 
-            });
+            cell.connect('button-press-event', (_a, ev) => { if (ev.get_button() === 2) { win.delete(global.get_current_time()); this._hideWindowPreview(); return Clutter.EVENT_STOP; } return Clutter.EVENT_PROPAGATE; });
             popup.add_child(cell);
         }
-
         Main.uiGroup.add_child(popup); popup.opacity = 0;
-        
         GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-            if (this._isDestroyed) return GLib.SOURCE_REMOVE; // Zabezpieczenie
-            if (!this._previewPopup) return GLib.SOURCE_REMOVE;
+            if (this._isDestroyed || !this._previewPopup) return GLib.SOURCE_REMOVE;
             const [ax, ay] = this.get_transformed_position();
             const pw = popup.width; const ph = popup.height; const mon = Main.layoutManager.primaryMonitor;
             let x = ax + (this.width / 2) - (pw / 2);
@@ -370,27 +306,26 @@ class AppButton extends St.Button {
             return GLib.SOURCE_REMOVE;
         });
 
-        // BŁĄD DUCHA NAPRAWIONY TUTAJ
+        // OSTATECZNY FIX DLA "already disposed"
         popup.connect('notify::hover', () => {
-            if (this._isDestroyed) return; // Zabezpieczenie przed usuniętym przyciskiem
-            if (!popup.hover && !this.hover) {
-                if (this._previewHoverTimer) GLib.source_remove(this._previewHoverTimer);
-                this._previewHoverTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, HIDE_DELAY_MS, () => {
-                    this._previewHoverTimer = null; 
-                    if (this._isDestroyed) return GLib.SOURCE_REMOVE; // Zabezpieczenie opóźnienia
-                    if (popup.get_parent() === null || !this._previewPopup || popup.hover || this.hover) return GLib.SOURCE_REMOVE;
-                    this._hideWindowPreview(); return GLib.SOURCE_REMOVE;
-                });
-            }
+            if (this._isDestroyed || !this._previewPopup || this._previewPopup !== popup) return;
+            try {
+                if (popup.get_parent() === null) return;
+                if (!popup.hover && !this.hover) {
+                    if (this._previewHoverTimer) GLib.source_remove(this._previewHoverTimer);
+                    this._previewHoverTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, HIDE_DELAY_MS, () => {
+                        this._previewHoverTimer = null; 
+                        if (this._isDestroyed || !this._previewPopup) return GLib.SOURCE_REMOVE;
+                        this._hideWindowPreview(); return GLib.SOURCE_REMOVE;
+                    });
+                }
+            } catch (e) {}
         });
         this._previewPopup = popup;
     }
 
     _hideWindowPreview() {
-        if (this._winSignalId) {
-            this._app.disconnect(this._winSignalId);
-            this._winSignalId = null;
-        }
+        if (this._winSignalId) { this._app.disconnect(this._winSignalId); this._winSignalId = null; }
         const popup = this._previewPopup; 
         if (!popup) return; 
         this._previewPopup = null;
@@ -412,10 +347,7 @@ class AppButton extends St.Button {
         this._tooltip.ease({ opacity: 255, duration: 120 });
     }
 
-    _hideTooltip() { 
-        if (this._isDestroyed) return;
-        this._tooltip.ease({ opacity: 0, duration: 80 }); 
-    }
+    _hideTooltip() { if (this._isDestroyed) return; this._tooltip.ease({ opacity: 0, duration: 80 }); }
 
     _onClick() {
         if (this._isDestroyed) return;
@@ -435,9 +367,7 @@ class AppButton extends St.Button {
     }
 
     _onDestroy() {
-        // Zabezpieczamy obiekt przed logiką duchów (asynchronicznymi timerami/hoverami)
         this._isDestroyed = true; 
-
         if (this._press) { if (this._press.motionId) global.stage.disconnect(this._press.motionId); if (this._press.releaseId) global.stage.disconnect(this._press.releaseId); }
         if (this._dragActor) this._dragActor.destroy();
         if (this._dropMarker) { if (this._dropMarker.get_parent()) Main.uiGroup.remove_child(this._dropMarker); this._dropMarker.destroy(); }
@@ -446,15 +376,12 @@ class AppButton extends St.Button {
         if (this._hoverTimeout) GLib.source_remove(this._hoverTimeout);
         if (this._winSignalId) this._app.disconnect(this._winSignalId);
         if (this._menu) this._menu.destroy();
-        
-        // Nie animujemy zanikania - niszczymy podgląd brutalnie i natychmiastowo!
         if (this._previewPopup) {
             this._previewPopup.remove_all_transitions();
             if (this._previewPopup.get_parent()) Main.uiGroup.remove_child(this._previewPopup); 
             this._previewPopup.destroy();
             this._previewPopup = null;
         }
-        
         if (this._tooltip) { 
             this._tooltip.remove_all_transitions();
             if (this._tooltip.get_parent()) Main.layoutManager.removeChrome(this._tooltip); 
