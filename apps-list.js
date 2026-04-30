@@ -1,4 +1,4 @@
-// Prosty Panel — apps-list.js (Z obsługą natywnego Drag & Drop z GNOME)
+// Prosty Panel — apps-list.js (Z obsługą przeciągania z Overview / App Grid)
 
 import St      from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -14,45 +14,54 @@ export function buildAppsList(host) {
         style_class : 'tb-apps',
         y_align     : Clutter.ActorAlign.CENTER,
         y_expand    : false,
-        reactive    : true, // KLUCZOWE: Musi być reaktywne, by przyjmować drop z zewnątrz
     });
 
-    // 🟢 NATYWNY DROP Z MENU GNOME (APP GRID) 🟢
-    appBox._delegate = {
+    // 🟢 NATYWNA STREFA ZRZUTU DLA IKON Z OVERVIEW 🟢
+    // Podpinamy logikę Drop Zone pod cały pasek (host)
+    host._delegate = {
         handleDragOver(source, actor, x, y, time) {
-            const app = source.app || (source.appInfo ? source.appInfo : null);
-            if (app && typeof app.get_id === 'function') {
-                return DND.DragMotionResult.MOVE_DROP;
+            // Sprawdzamy, czy przeciągany obiekt to ikona aplikacji GNOME
+            if (source && source.app && typeof source.app.get_id === 'function') {
+                // COPY_DROP daje wizualny znak "+" przy kursorze
+                return DND.DragMotionResult.COPY_DROP;
             }
             return DND.DragMotionResult.NO_DROP;
         },
         acceptDrop(source, actor, x, y, time) {
-            const app = source.app || (source.appInfo ? source.appInfo : null);
-            if (!app || typeof app.get_id !== 'function') return false;
+            // Bezpiecznik: weryfikujemy czy to na pewno aplikacja
+            if (!source || !source.app || typeof source.app.get_id !== 'function') {
+                return false;
+            }
             
-            const id = app.get_id();
+            const id = source.app.get_id();
             const favs = AppFavorites.getAppFavorites();
             
-            // Obliczamy pozycję upuszczenia na podstawie kursora myszy (x)
+            // Obliczamy, w którym miejscu upuszczono ikonę
             let dropIndex = favs.getFavorites().length;
+            const [hostX] = host.get_transformed_position();
+            const globalX = hostX + x; // Absolutna pozycja kursora X na ekranie
+
             const children = appBox.get_children();
-            
             for (let i = 0; i < children.length; i++) {
                 const child = children[i];
                 const [childX] = child.get_transformed_position();
-                if (x < childX + child.width / 2) {
+                
+                // Jeśli kursor jest przed połową danej ikony, wstaw apkę tutaj
+                if (globalX < childX + (child.width / 2)) {
                     dropIndex = i;
                     break;
                 }
             }
             
-            // Nie pozwalamy przypiąć dalej niż na końcu strefy ulubionych
+            // Ogranicznik: nie pozwalamy przypiąć nowej apki dalej niż na końcu strefy przypiętych
             dropIndex = Math.min(dropIndex, favs.getFavorites().length);
             
+            // Jeśli aplikacja nie jest przypięta - przypnij ją!
             if (!favs.isFavorite(id)) {
-                favs.addFavorite(id, dropIndex); // Przypina w wybranym miejscu
-            } else {
-                if (typeof favs.moveFavoriteToPos === 'function') favs.moveFavoriteToPos(id, dropIndex);
+                favs.addFavorite(id, dropIndex);
+            } else if (typeof favs.moveFavoriteToPos === 'function') {
+                // Jeśli już jest przypięta, ale przeciągnąłeś ją z Overview, przenieś ją
+                favs.moveFavoriteToPos(id, dropIndex);
             }
             return true;
         }
@@ -133,7 +142,6 @@ export function buildAppsList(host) {
         host._signalIds.push([wm, wm.connect('minimize',  () => updateStates())]);
         host._signalIds.push([wm, wm.connect('unminimize',() => updateStates())]);
 
-        // LOGIKA ZMIANY KOLEJNOŚCI NIEPRZYPIĘTYCH
         host._signalIds.push([host, host.connect('reorder-running', (_h, data) => {
             const { appId, pos } = data;
             if (!host._runOrder) return;
