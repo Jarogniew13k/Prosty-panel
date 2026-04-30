@@ -1,4 +1,4 @@
-// Prosty Panel — appbutton.js (Wersja Ostateczna z ochroną animacji przed zniszczeniem)
+// Prosty Panel — appbutton.js (Wersja z natychmiastowym odświeżaniem podglądu okien)
 
 import GObject  from 'gi://GObject';
 import St       from 'gi://St';
@@ -12,7 +12,6 @@ import * as PopupMenu    from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import { ICON_SIZE, HOVER_DELAY_MS, HIDE_DELAY_MS, PREVIEW_W, PREVIEW_H } from './constants.js';
 import { openMenuAboveBar } from './utils.js';
 
-// BEZPIECZNIK: Zatrzymuje wszystkie animacje przed usunięciem obiektu, zapobiegając błędom "detached actors"
 function killAllTransitions(actor) {
     if (!actor) return;
     try { actor.remove_all_transitions(); } catch (e) {}
@@ -276,7 +275,8 @@ class AppButton extends St.Button {
         if (this._isDestroyed) return;
         
         const ws = global.workspace_manager.get_active_workspace();
-        const wins = this._app.get_windows().filter(w => w.get_workspace() === ws);
+        // Zawsze upewniamy się, że omijamy okna w trakcie niszczenia (w.get_workspace() !== null)
+        const wins = this._app.get_windows().filter(w => w.get_workspace() === ws && w.get_workspace() !== null);
         
         if (wins.length > 0) {
             this._showWindowPreview(wins);
@@ -285,7 +285,7 @@ class AppButton extends St.Button {
                     if (this._isDestroyed) return;
                     if (this.hover && this._previewPopup) {
                         const currentWs = global.workspace_manager.get_active_workspace();
-                        const currentWins = this._app.get_windows().filter(w => w.get_workspace() === currentWs);
+                        const currentWins = this._app.get_windows().filter(w => w.get_workspace() === currentWs && w.get_workspace() !== null);
                         if (currentWins.length > 0) {
                             this._showWindowPreview(currentWins);
                         } else {
@@ -311,7 +311,6 @@ class AppButton extends St.Button {
                 GLib.source_remove(this._previewHoverTimer); 
                 this._previewHoverTimer = null; 
             }
-            // Zabezpieczenie przed błędem detached actor
             if (!oldPopup.get_stage()) {
                 if (oldPopup.get_parent()) Main.uiGroup.remove_child(oldPopup);
                 killAllTransitions(oldPopup);
@@ -332,6 +331,7 @@ class AppButton extends St.Button {
 
         const popup = new St.BoxLayout({ style_class : 'tb-preview-popup', reactive : true, track_hover : true, y_align : Clutter.ActorAlign.CENTER });
         const tc = this._getThemeClass(); if (tc) popup.add_style_class_name(tc);
+        const currentWs = global.workspace_manager.get_active_workspace();
         
         for (const win of wins) {
             const cell = new St.Button({ style_class : 'tb-preview-cell', reactive : true, can_focus : true, track_hover : true });
@@ -353,19 +353,40 @@ class AppButton extends St.Button {
             wrapper.add_child(title);
             
             const closeBtn = new St.Button({ style_class: 'tb-preview-close-btn', child: new St.Icon({ icon_name: 'window-close-symbolic', icon_size: 14 }), x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.START, x_expand: true, y_expand: true, reactive: true, can_focus: true, style: 'background-color: rgba(0,0,0,0.6); border-radius: 99px; padding: 4px; margin: 2px;' });
-            closeBtn.connect('clicked', () => { win.delete(global.get_current_time()); });
+            
+            // FUNKCJA ZAMYKAJĄCA POJEDYNCZE OKNO
+            const closeWindow = () => {
+                if (!win.get_workspace()) return; // Zapobiega błędom, gdy okno już jest usuwane
+                win.delete(global.get_current_time());
+                
+                // Magia: natychmiastowe zniszczenie samej miniaturki dla płynności podglądu!
+                if (cell.get_parent()) {
+                    killAllTransitions(cell);
+                    cell.destroy();
+                }
+                
+                // Zamykamy całkowicie podgląd jeśli usunięto ostatnie okno
+                const remainingWins = this._app.get_windows().filter(w => w !== win && w.get_workspace() === currentWs && w.get_workspace() !== null);
+                if (remainingWins.length === 0) {
+                    this._hideWindowPreview();
+                    if (this.hover) this._showTooltip();
+                }
+            };
+
+            closeBtn.connect('clicked', () => { closeWindow(); });
             wrapper.add_child(closeBtn);
             
             cell.set_child(wrapper);
             
             cell.connect('clicked', () => { 
+                if (!win.get_workspace()) return; // FIX BŁĘDU: "TypeError: can't access property index"
                 this._hideWindowPreview(); 
                 Main.activateWindow(win); 
             });
             cell.connect('button-press-event', (_a, ev) => { 
                 if (ev.get_button() === 2) { 
-                    win.delete(global.get_current_time()); 
-                    return Clutter.EVENT_STOP; 
+                    closeWindow();
+                    return Clutter.EVENT_STOP; // Zatrzymujemy kliknięcie, aby nie aktywowało usuwanego okna
                 } 
                 return Clutter.EVENT_PROPAGATE; 
             });
@@ -423,7 +444,6 @@ class AppButton extends St.Button {
         this._previewPopup = null;
         if (this._previewHoverTimer) { GLib.source_remove(this._previewHoverTimer); this._previewHoverTimer = null; }
         
-        // Zabezpieczenie przed błędem detached actor
         if (!popup.get_stage()) {
             if (popup.get_parent()) Main.uiGroup.remove_child(popup);
             killAllTransitions(popup);
@@ -463,7 +483,6 @@ class AppButton extends St.Button {
         this.remove_style_class_name('running'); 
         this.remove_style_class_name('active');
         
-        // Zabezpieczenie dla 100ms kropki
         const hasStage = this._dot && this._dot.get_stage() !== null;
         
         if (running) { 
@@ -480,7 +499,8 @@ class AppButton extends St.Button {
     _onClick() {
         if (this._isDestroyed) return;
         const ws = global.workspace_manager.get_active_workspace();
-        const wins = this._app.get_windows().filter(w => w.get_workspace() === ws);
+        // Bezpiecznie sprawdzamy pulpity, omijając okna z null
+        const wins = this._app.get_windows().filter(w => w.get_workspace() === ws && w.get_workspace() !== null);
         if (wins.length === 0) { const all = this._app.get_windows(); all.length > 0 ? Main.activateWindow(all[0]) : this._app.activate(); }
         else if (wins.length === 1) { const w = wins[0]; w.has_focus() ? w.minimize() : (w.unminimize(), Main.activateWindow(w)); }
         else { const f = wins.find(w => w.has_focus()); Main.activateWindow(f ? wins[(wins.indexOf(f) + 1) % wins.length] : wins[0]); }
@@ -489,7 +509,6 @@ class AppButton extends St.Button {
     _onDestroy() {
         this._isDestroyed = true; 
         
-        // ZABICIE ANIMACJI GŁÓWNEGO PRZYCISKU (Fix na błędy 100ms przy odpinaniu)
         killAllTransitions(this);
         
         if (this._press) { if (this._press.motionId) global.stage.disconnect(this._press.motionId); if (this._press.releaseId) global.stage.disconnect(this._press.releaseId); }
