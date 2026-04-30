@@ -1,4 +1,4 @@
-// Prosty Panel — appbutton.js (Wersja Ostateczna i Stabilna)
+// Prosty Panel — appbutton.js (Wersja Ostateczna i Stabilna z opóźnionym odpinaniem)
 
 import GObject  from 'gi://GObject';
 import St       from 'gi://St';
@@ -119,7 +119,6 @@ class AppButton extends St.Button {
         this._dragActor.set_position(mx - (this.width / 2), my - (this.height / 2));
         
         if (!this._dropMarker) {
-            // FIX: Bezpieczny CSS zamiast Clutter.Color
             this._dropMarker = new St.Widget({ 
                 style_class: 'tb-drop-marker', 
                 style: 'background-color: rgba(255, 255, 255, 0.86);' 
@@ -211,7 +210,6 @@ class AppButton extends St.Button {
         const app = this._app; const wins = app.get_windows(); const isRun = wins.length > 0;
         const favs = AppFavorites.getAppFavorites(); const appId = app.get_id(); const isFav = favs.isFavorite(appId);
         
-        // FIX: Usunięto zduplikowane this._menu.close() – GNOME zamyka menu automatycznie po aktywacji
         if (isRun) {
             const openItem = new PopupMenu.PopupMenuItem('Otwórz');
             openItem.connect('activate', () => { Main.activateWindow(wins[0]); });
@@ -225,7 +223,14 @@ class AppButton extends St.Button {
         this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         
         const pinItem = new PopupMenu.PopupMenuItem(isFav ? 'Odepnij' : 'Przypnij');
-        pinItem.connect('activate', () => { isFav ? favs.removeFavorite(appId) : favs.addFavorite(appId); });
+        pinItem.connect('activate', () => { 
+            // FIX: Opóźniamy zmianę ulubionych, aby GNOME zdążyło bezpiecznie zamknąć menu,
+            // zanim przycisk zostanie zniszczony przez przebudowę paska.
+            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                isFav ? favs.removeFavorite(appId) : favs.addFavorite(appId);
+                return GLib.SOURCE_REMOVE;
+            });
+        });
         this._menu.addMenuItem(pinItem);
         
         if (isRun) {
