@@ -44,6 +44,7 @@ cp "$SCRIPT_DIR/activities.js"     "$DEST/"
 cp "$SCRIPT_DIR/clock.js"          "$DEST/"
 cp "$SCRIPT_DIR/system-group.js"   "$DEST/"
 cp "$SCRIPT_DIR/tray-popup.js"     "$DEST/"
+cp "$SCRIPT_DIR/extra-status.js"   "$DEST/" # 🟢 DODANO NOWY PLIK
 
 # Schemy + lokalna kompilacja
 mkdir -p "$DEST/schemas"
