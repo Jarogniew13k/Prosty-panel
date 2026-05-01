@@ -1,4 +1,4 @@
-// Prosty Panel — utils.js (Wersja wydawnicza, ignorowanie zniszczonych BoxPointer)
+// Prosty Panel — utils.js (Fix menu G_IS_OBJECT)
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -76,13 +76,16 @@ export function openMenuAboveBar(menu, sourceButton, gap = PANEL_GAP, rightAncho
 
     let isClosed = false;
 
-    const cleanupMenu = () => {
+    // 🟢 Zabezpieczenie przed edycją niszczonego Menu
+    const cleanupMenu = (isDestroying = false) => {
         if (isClosed) return;
         isClosed = true;
-        try { menu.sourceActor = origSource; menu.open = origMenuOpen; menu.close = origMenuClose; } catch(e) {}
         
-        if (bp) {
-            // 🟢 FIX: Przechwytywanie błędu operacji na zniszczonym "ogonie" (BoxPointer) menu
+        if (!isDestroying) {
+            try { menu.sourceActor = origSource; menu.open = origMenuOpen; menu.close = origMenuClose; } catch(e) {}
+        }
+        
+        if (bp && !isDestroying) {
             try {
                 if (heightCapId && bp._container) { bp._container.disconnect(heightCapId); heightCapId = 0; }
                 if (origBpSource !== null) { if ('sourceActor' in bp) bp.sourceActor = origBpSource; else if ('_sourceActor' in bp) bp._sourceActor = origBpSource; }
@@ -99,11 +102,11 @@ export function openMenuAboveBar(menu, sourceButton, gap = PANEL_GAP, rightAncho
 
     const closedId = menu.connect('menu-closed', () => {
         try { menu.disconnect(closedId); } catch(e){}
-        cleanupMenu();
+        cleanupMenu(false);
     });
 
     menu.connect('destroy', () => {
-        cleanupMenu();
+        cleanupMenu(true);
     });
 }
 
