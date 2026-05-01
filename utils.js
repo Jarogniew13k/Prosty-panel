@@ -1,4 +1,4 @@
-// Prosty Panel — utils.js (Wersja wydawnicza z twardym odblokowywaniem paska)
+// Prosty Panel — utils.js (Wersja wydawnicza, ignorowanie zniszczonych BoxPointer)
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -76,17 +76,21 @@ export function openMenuAboveBar(menu, sourceButton, gap = PANEL_GAP, rightAncho
 
     let isClosed = false;
 
-    // 🟢 Funkcja sprzątająca, która zdejmuje blokadę paska
     const cleanupMenu = () => {
         if (isClosed) return;
         isClosed = true;
-        menu.sourceActor = origSource; menu.open = origMenuOpen; menu.close = origMenuClose;
+        try { menu.sourceActor = origSource; menu.open = origMenuOpen; menu.close = origMenuClose; } catch(e) {}
+        
         if (bp) {
-            if (heightCapId && bp._container) { bp._container.disconnect(heightCapId); heightCapId = 0; }
-            if (origBpSource !== null) { if ('sourceActor' in bp) bp.sourceActor = origBpSource; else if ('_sourceActor' in bp) bp._sourceActor = origBpSource; }
-            if (origReposition) { bp._reposition = origReposition; origReposition = null; }
-            bp.set_style(null);
+            // 🟢 FIX: Przechwytywanie błędu operacji na zniszczonym "ogonie" (BoxPointer) menu
+            try {
+                if (heightCapId && bp._container) { bp._container.disconnect(heightCapId); heightCapId = 0; }
+                if (origBpSource !== null) { if ('sourceActor' in bp) bp.sourceActor = origBpSource; else if ('_sourceActor' in bp) bp._sourceActor = origBpSource; }
+                if (origReposition) { bp._reposition = origReposition; origReposition = null; }
+                bp.set_style(null);
+            } catch(e) {} 
         }
+        
         if (bar && bar._openMenus && bar._openMenus.has(menu)) {
             bar._openMenus.delete(menu);
             try { bar.emit('menu-closed'); } catch (e) {}
@@ -94,11 +98,10 @@ export function openMenuAboveBar(menu, sourceButton, gap = PANEL_GAP, rightAncho
     };
 
     const closedId = menu.connect('menu-closed', () => {
-        menu.disconnect(closedId);
+        try { menu.disconnect(closedId); } catch(e){}
         cleanupMenu();
     });
 
-    // 🟢 FIX RATUNKOWY: Jeśli menu zostanie zniszczone w trakcie bycia otwartym, odblokuj pasek!
     menu.connect('destroy', () => {
         cleanupMenu();
     });
