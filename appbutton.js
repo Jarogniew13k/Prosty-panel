@@ -1,4 +1,4 @@
-// Prosty Panel — appbutton.js (Wersja wydawnicza z fixem dla drag&drop)
+// Prosty Panel — appbutton.js (Wersja wydawnicza, bez detached actors)
 
 import GObject  from 'gi://GObject';
 import St       from 'gi://St';
@@ -72,7 +72,6 @@ class AppButton extends St.Button {
     }
 
     _onButtonPress(_a, ev) {
-        // 🟢 FIX: Ignoruj kliknięcia, jeśli pasek jest w trakcie ukrywania (nieaktywny)
         if (this._isDestroyed || !this.get_reactive()) return Clutter.EVENT_PROPAGATE;
         
         const btn = ev.get_button();
@@ -258,7 +257,6 @@ class AppButton extends St.Button {
     _onHover() {
         if (this._isDestroyed) return;
 
-        // 🟢 FIX: Ignoruj najechanie myszką, gdy pasek jest schowany
         if (!this.get_reactive()) {
             this._hideTooltip();
             this._hideWindowPreview();
@@ -327,15 +325,19 @@ class AppButton extends St.Button {
                 this._previewHoverTimer = null; 
             }
             if (!oldPopup.get_stage()) {
+                oldPopup.set_reactive(false); // 🟢 Zamraża animacje CSS
+                oldPopup.hide();
                 if (oldPopup.get_parent()) Main.uiGroup.remove_child(oldPopup);
                 killAllTransitions(oldPopup);
                 oldPopup.destroy();
             } else {
+                oldPopup.set_reactive(false); // 🟢 Zamraża animacje CSS w trakcie znikania
                 oldPopup.ease({ 
                     opacity: 0, 
                     duration: 100, 
                     mode: Clutter.AnimationMode.EASE_OUT_QUAD, 
                     onStopped: () => { 
+                        oldPopup.hide();
                         killAllTransitions(oldPopup);
                         if (oldPopup.get_parent()) Main.uiGroup.remove_child(oldPopup); 
                         oldPopup.destroy(); 
@@ -374,6 +376,8 @@ class AppButton extends St.Button {
                 win.delete(global.get_current_time());
                 
                 if (cell.get_parent()) {
+                    cell.set_reactive(false); // 🟢 Blokuje animacje "detached actor 100ms" przed uśmierceniem
+                    cell.hide();
                     killAllTransitions(cell);
                     cell.destroy();
                 }
@@ -457,15 +461,19 @@ class AppButton extends St.Button {
         if (this._previewHoverTimer) { GLib.source_remove(this._previewHoverTimer); this._previewHoverTimer = null; }
         
         if (!popup.get_stage()) {
+            popup.set_reactive(false); // 🟢 Blokada animacji "detached actor 100ms"
+            popup.hide();
             if (popup.get_parent()) Main.uiGroup.remove_child(popup);
             killAllTransitions(popup);
             popup.destroy();
         } else {
+            popup.set_reactive(false); // 🟢 Zamraża w trakcie opadania
             popup.ease({ 
                 opacity: 0, 
                 duration: 100, 
                 mode: Clutter.AnimationMode.EASE_OUT_QUAD, 
                 onStopped: () => { 
+                    popup.hide();
                     killAllTransitions(popup);
                     if (popup.get_parent()) Main.uiGroup.remove_child(popup); 
                     popup.destroy(); 
@@ -520,8 +528,6 @@ class AppButton extends St.Button {
     _onDestroy() {
         killAllTransitions(this);
 
-        // 🟢 FIX RATUNKOWY: Jeśli ikona jest niszczona (bo zamknąłeś program) w trakcie przeciągania
-        // musimy koniecznie zdjąć blokadę Intellihide z paska zadań.
         if (this._press && this._press.dragging) {
             this._emitBarSignal('drag-end');
         }
@@ -533,7 +539,12 @@ class AppButton extends St.Button {
         if (this._previewHoverTimer) GLib.source_remove(this._previewHoverTimer);
         if (this._hoverTimeout) GLib.source_remove(this._hoverTimeout);
         if (this._winSignalId) this._app.disconnect(this._winSignalId);
-        if (this._menu) this._menu.destroy();
+        
+        // 🟢 FIX: Ostateczne czyszczenie menu kontekstowego
+        if (this._menu) {
+            this._menu.destroy();
+            this._menu = null;
+        }
         
         if (this._previewPopup) {
             this._emitBarSignal('menu-closed');
