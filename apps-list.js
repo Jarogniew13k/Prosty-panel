@@ -1,4 +1,4 @@
-// Prosty Panel — apps-list.js (Z obsługą przeciągania z Overview / App Grid i bezpiecznikiem tworzenia okien)
+// Prosty Panel — apps-list.js (Wersja wydawnicza z blokadą 'Already Disposed')
 
 import St      from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -16,19 +16,14 @@ export function buildAppsList(host) {
         y_expand    : false,
     });
 
-    // 🟢 NATYWNA STREFA ZRZUTU DLA IKON Z OVERVIEW 🟢
-    // Podpinamy logikę Drop Zone pod cały pasek (host)
     host._delegate = {
         handleDragOver(source, actor, x, y, time) {
-            // Sprawdzamy, czy przeciągany obiekt to ikona aplikacji GNOME
             if (source && source.app && typeof source.app.get_id === 'function') {
-                // COPY_DROP daje wizualny znak "+" przy kursorze
                 return DND.DragMotionResult.COPY_DROP;
             }
             return DND.DragMotionResult.NO_DROP;
         },
         acceptDrop(source, actor, x, y, time) {
-            // Bezpiecznik: weryfikujemy czy to na pewno aplikacja
             if (!source || !source.app || typeof source.app.get_id !== 'function') {
                 return false;
             }
@@ -36,31 +31,27 @@ export function buildAppsList(host) {
             const id = source.app.get_id();
             const favs = AppFavorites.getAppFavorites();
             
-            // Obliczamy, w którym miejscu upuszczono ikonę
             let dropIndex = favs.getFavorites().length;
             const [hostX] = host.get_transformed_position();
-            const globalX = hostX + x; // Absolutna pozycja kursora X na ekranie
+            const globalX = hostX + x; 
 
-            const children = appBox.get_children();
-            for (let i = 0; i < children.length; i++) {
-                const child = children[i];
-                const [childX] = child.get_transformed_position();
-                
-                // Jeśli kursor jest przed połową danej ikony, wstaw apkę tutaj
-                if (globalX < childX + (child.width / 2)) {
-                    dropIndex = i;
-                    break;
+            try {
+                const children = appBox.get_children();
+                for (let i = 0; i < children.length; i++) {
+                    const child = children[i];
+                    const [childX] = child.get_transformed_position();
+                    if (globalX < childX + (child.width / 2)) {
+                        dropIndex = i;
+                        break;
+                    }
                 }
-            }
+            } catch (e) {}
             
-            // Ogranicznik: nie pozwalamy przypiąć nowej apki dalej niż na końcu strefy przypiętych
             dropIndex = Math.min(dropIndex, favs.getFavorites().length);
             
-            // Jeśli aplikacja nie jest przypięta - przypnij ją!
             if (!favs.isFavorite(id)) {
                 favs.addFavorite(id, dropIndex);
             } else if (typeof favs.moveFavoriteToPos === 'function') {
-                // Jeśli już jest przypięta, ale przeciągnąłeś ją z Overview, przenieś ją
                 favs.moveFavoriteToPos(id, dropIndex);
             }
             return true;
@@ -68,6 +59,15 @@ export function buildAppsList(host) {
     };
 
     const rebuildApps = () => {
+        if (host._panelDestroyed) return;
+
+        // 🟢 FIX: Ochrona przed modyfikacją martwego obiektu w trakcie DND
+        try {
+            appBox.get_children();
+        } catch (e) {
+            return; // Obiekt zniszczony przez C (Mutter/GNOME), przerywamy przebudowę
+        }
+
         const favs    = AppFavorites.getAppFavorites().getFavorites();
         const running = Shell.AppSystem.get_default().get_running();
         const favIds  = new Set(favs.map(a => a.get_id()));
@@ -99,16 +99,16 @@ export function buildAppsList(host) {
                 const btn = new AppButton(app);
                 host._buttons.set(id, btn);
             }
-            appBox.add_child(host._buttons.get(id));
+            try { appBox.add_child(host._buttons.get(id)); } catch(e) {}
         };
 
-        appBox.remove_all_children();
+        try { appBox.remove_all_children(); } catch(e) {}
         for (const app of favs) addBtn(app);
         for (const app of orderedRun) addBtn(app);
 
         for (const [id, btn] of host._buttons.entries()) {
             if (!toKeep.has(id)) {
-                btn.destroy();
+                try { btn.destroy(); } catch(e) {} // 🟢 FIX: Po cichu uśmiercaj już usunięte guziki
                 host._buttons.delete(id);
             }
         }
@@ -116,13 +116,16 @@ export function buildAppsList(host) {
     };
 
     const updateStates = () => {
+        if (host._panelDestroyed) return;
         const tracker = Shell.WindowTracker.get_default();
         const focusApp = tracker.focus_app;
         for (const [id, btn] of host._buttons.entries()) {
-            const app = btn.app;
-            const running = app.get_state() === Shell.AppState.RUNNING;
-            const active  = (focusApp && focusApp.get_id() === id);
-            btn.updateState(running, active);
+            try {
+                const app = btn.app;
+                const running = app.get_state() === Shell.AppState.RUNNING;
+                const active  = (focusApp && focusApp.get_id() === id);
+                btn.updateState(running, active);
+            } catch(e) {}
         }
     };
 
@@ -137,7 +140,6 @@ export function buildAppsList(host) {
         host._signalIds.push([tracker, tracker.connect('notify::focus-app', () => updateStates())]);
         host._signalIds.push([favs,    favs.connect('changed',              () => rebuildApps())]);
         
-        // Zabezpieczone przed zniszczeniem paska
         host._signalIds.push([display, display.connect('window-created',    () => {
             GLib.idle_add(GLib.PRIORITY_DEFAULT, () => { 
                 if (host._panelDestroyed) return GLib.SOURCE_REMOVE; 
