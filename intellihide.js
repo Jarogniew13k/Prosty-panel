@@ -82,7 +82,7 @@ export const Intellihide = GObject.registerClass({
 
         bind(this._taskbar, 'menu-opened', () => this.revealAndHold());
         bind(this._taskbar, 'menu-closed', () => this.release());
-        bind(this._taskbar, 'drag-start',  () => this.revealAndHold());
+        bind(this._taskbar, 'drag-start',  () => this.revealAndHold(true));
         bind(this._taskbar, 'drag-end',    () => this.release());
 
         bind(Main.overview, 'showing', () => {
