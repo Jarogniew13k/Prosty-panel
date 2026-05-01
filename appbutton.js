@@ -1,4 +1,4 @@
-// Prosty Panel — appbutton.js (Wersja Ostateczna z ochroną animacji przed zniszczeniem)
+// Prosty Panel — appbutton.js (Wersja wydawnicza z fixem dla drag&drop)
 
 import GObject  from 'gi://GObject';
 import St       from 'gi://St';
@@ -38,7 +38,7 @@ class AppButton extends St.Button {
         this._previewHoverTimer = null;
         this._isFavorite   = false;
         this._isDestroyed  = false; 
-        this._cachedBar    = null; // 🟢 Pamięć referencji do paska
+        this._cachedBar    = null;
 
         const box = new St.BoxLayout({
             vertical : true,
@@ -72,7 +72,9 @@ class AppButton extends St.Button {
     }
 
     _onButtonPress(_a, ev) {
-        if (this._isDestroyed) return Clutter.EVENT_PROPAGATE;
+        // 🟢 FIX: Ignoruj kliknięcia, jeśli pasek jest w trakcie ukrywania (nieaktywny)
+        if (this._isDestroyed || !this.get_reactive()) return Clutter.EVENT_PROPAGATE;
+        
         const btn = ev.get_button();
         
         if (btn === 1) {
@@ -194,7 +196,6 @@ class AppButton extends St.Button {
         }
     }
 
-    // 🟢 ULEPSZONA FUNKCJA EMITUJĄCA (Odporna na zniszczenie przycisku)
     _emitBarSignal(name, data = null) {
         if (!this._cachedBar) {
             let p = this.get_parent();
@@ -257,7 +258,7 @@ class AppButton extends St.Button {
     _onHover() {
         if (this._isDestroyed) return;
 
-        // 🟢 NOWY BEZPIECZNIK: Jeśli panel jest schowany (nieaktywny), nie pokazuj nic
+        // 🟢 FIX: Ignoruj najechanie myszką, gdy pasek jest schowany
         if (!this.get_reactive()) {
             this._hideTooltip();
             this._hideWindowPreview();
@@ -518,6 +519,12 @@ class AppButton extends St.Button {
 
     _onDestroy() {
         killAllTransitions(this);
+
+        // 🟢 FIX RATUNKOWY: Jeśli ikona jest niszczona (bo zamknąłeś program) w trakcie przeciągania
+        // musimy koniecznie zdjąć blokadę Intellihide z paska zadań.
+        if (this._press && this._press.dragging) {
+            this._emitBarSignal('drag-end');
+        }
         
         if (this._press) { if (this._press.motionId) global.stage.disconnect(this._press.motionId); if (this._press.releaseId) global.stage.disconnect(this._press.releaseId); }
         if (this._dragActor) this._dragActor.destroy();
@@ -542,7 +549,6 @@ class AppButton extends St.Button {
             this._tooltip.destroy(); 
         }
 
-        // 🟢 Ustawiane dopiero po bezpiecznym wysłaniu wszystkich sygnałów `menu-closed`
         this._isDestroyed = true; 
     }
 
