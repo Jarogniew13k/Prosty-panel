@@ -1,4 +1,4 @@
-// Prosty Panel — appbutton.js (Wersja wydawnicza, bez detached actors)
+// Prosty Panel — appbutton.js (Fix dla G_IS_OBJECT)
 
 import GObject  from 'gi://GObject';
 import St       from 'gi://St';
@@ -16,7 +16,7 @@ function killAllTransitions(actor) {
     if (!actor) return;
     try { actor.remove_all_transitions(); } catch (e) {}
     if (typeof actor.get_children === 'function') {
-        actor.get_children().forEach(killAllTransitions);
+        try { actor.get_children().forEach(killAllTransitions); } catch(e) {}
     }
 }
 
@@ -325,13 +325,13 @@ class AppButton extends St.Button {
                 this._previewHoverTimer = null; 
             }
             if (!oldPopup.get_stage()) {
-                oldPopup.set_reactive(false); // 🟢 Zamraża animacje CSS
+                oldPopup.set_reactive(false);
                 oldPopup.hide();
                 if (oldPopup.get_parent()) Main.uiGroup.remove_child(oldPopup);
                 killAllTransitions(oldPopup);
                 oldPopup.destroy();
             } else {
-                oldPopup.set_reactive(false); // 🟢 Zamraża animacje CSS w trakcie znikania
+                oldPopup.set_reactive(false);
                 oldPopup.ease({ 
                     opacity: 0, 
                     duration: 100, 
@@ -376,7 +376,7 @@ class AppButton extends St.Button {
                 win.delete(global.get_current_time());
                 
                 if (cell.get_parent()) {
-                    cell.set_reactive(false); // 🟢 Blokuje animacje "detached actor 100ms" przed uśmierceniem
+                    cell.set_reactive(false);
                     cell.hide();
                     killAllTransitions(cell);
                     cell.destroy();
@@ -461,13 +461,13 @@ class AppButton extends St.Button {
         if (this._previewHoverTimer) { GLib.source_remove(this._previewHoverTimer); this._previewHoverTimer = null; }
         
         if (!popup.get_stage()) {
-            popup.set_reactive(false); // 🟢 Blokada animacji "detached actor 100ms"
+            popup.set_reactive(false);
             popup.hide();
             if (popup.get_parent()) Main.uiGroup.remove_child(popup);
             killAllTransitions(popup);
             popup.destroy();
         } else {
-            popup.set_reactive(false); // 🟢 Zamraża w trakcie opadania
+            popup.set_reactive(false);
             popup.ease({ 
                 opacity: 0, 
                 duration: 100, 
@@ -526,7 +526,8 @@ class AppButton extends St.Button {
     }
 
     _onDestroy() {
-        killAllTransitions(this);
+        // ZABEZPIECZENIE PRZED G_IS_OBJECT: Zdejmujemy killAllTransitions(this) stąd!
+        // Dzieci zostaną bezpiecznie uśmiercone przez Clutter.
 
         if (this._press && this._press.dragging) {
             this._emitBarSignal('drag-end');
@@ -540,7 +541,6 @@ class AppButton extends St.Button {
         if (this._hoverTimeout) GLib.source_remove(this._hoverTimeout);
         if (this._winSignalId) this._app.disconnect(this._winSignalId);
         
-        // 🟢 FIX: Ostateczne czyszczenie menu kontekstowego
         if (this._menu) {
             this._menu.destroy();
             this._menu = null;
