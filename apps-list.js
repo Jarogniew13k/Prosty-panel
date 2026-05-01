@@ -1,4 +1,4 @@
-// Prosty Panel — apps-list.js (Wersja wydawnicza z blokadą 'Already Disposed')
+// Prosty Panel — apps-list.js (Fix usuwania przycisków dla G_IS_OBJECT)
 
 import St      from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -61,12 +61,7 @@ export function buildAppsList(host) {
     const rebuildApps = () => {
         if (host._panelDestroyed) return;
 
-        // 🟢 FIX: Ochrona przed modyfikacją martwego obiektu w trakcie DND
-        try {
-            appBox.get_children();
-        } catch (e) {
-            return; // Obiekt zniszczony przez C (Mutter/GNOME), przerywamy przebudowę
-        }
+        try { appBox.get_children(); } catch (e) { return; }
 
         const favs    = AppFavorites.getAppFavorites().getFavorites();
         const running = Shell.AppSystem.get_default().get_running();
@@ -108,7 +103,10 @@ export function buildAppsList(host) {
 
         for (const [id, btn] of host._buttons.entries()) {
             if (!toKeep.has(id)) {
-                try { btn.destroy(); } catch(e) {} // 🟢 FIX: Po cichu uśmiercaj już usunięte guziki
+                try { 
+                    btn.remove_all_transitions(); // 🟢 Zdejmuje animacje bezpiecznie PRZED śmiercią 
+                    btn.destroy(); 
+                } catch(e) {}
                 host._buttons.delete(id);
             }
         }
