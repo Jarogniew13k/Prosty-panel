@@ -1,4 +1,4 @@
-// Prosty Panel — intellihide.js (Fix dla okien znikających z pamięci)
+// Prosty Panel — intellihide.js (Wyciszony GSignal)
 
 import Clutter from 'gi://Clutter';
 import GLib    from 'gi://GLib';
@@ -97,7 +97,14 @@ export const Intellihide = GObject.registerClass({
         if (this._checkDebounceId)  { GLib.source_remove(this._checkDebounceId);  this._checkDebounceId = 0; }
         if (this._newWinRecheckId)  { GLib.source_remove(this._newWinRecheckId);  this._newWinRecheckId = 0; }
 
-        for (const sig of this._generalSignals) { try { sig.obj.disconnect(sig.id); } catch (e) {} }
+        // 🟢 FIX: Ochrona GSignal przed błędami przy wyłączaniu autohide
+        for (const sig of this._generalSignals) { 
+            try { 
+                if (sig.obj && GObject.signal_handler_is_connected(sig.obj, sig.id)) {
+                    sig.obj.disconnect(sig.id); 
+                }
+            } catch (e) {} 
+        }
         this._generalSignals = [];
         this._clearAllTrackedWindows();
 
@@ -147,7 +154,6 @@ export const Intellihide = GObject.registerClass({
         const signals = [ 'size-changed', 'position-changed', 'notify::fullscreen', 'notify::maximized-horizontally', 'notify::maximized-vertically', 'notify::minimized' ];
         for (const sig of signals) { try { ids.push(win.connect(sig, cb)); } catch (e) {} }
 
-        // 🟢 FIX: Nasłuch na odpięcie od systemu, uwalnia sygnały ZANIM okno ulegnie zniszczeniu
         const unmanagedId = win.connect('unmanaged', () => {
             this._untrackWindow(win);
             this._trackedWindows.delete(win);
@@ -160,8 +166,13 @@ export const Intellihide = GObject.registerClass({
 
     _untrackWindow(win, ids) {
         if (!ids) ids = this._trackedWindows.get(win) || [];
+        // 🟢 FIX: Ochrona GSignal przy odłączaniu okien
         for (const id of ids) {
-            try { win.disconnect(id); } catch (e) {}
+            try { 
+                if (GObject.signal_handler_is_connected(win, id)) {
+                    win.disconnect(id); 
+                }
+            } catch (e) {}
         }
     }
 

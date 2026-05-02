@@ -1,4 +1,4 @@
-// Prosty Panel — apps-list.js (Fix usuwania przycisków dla G_IS_OBJECT)
+// Prosty Panel — apps-list.js
 
 import St      from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -103,8 +103,10 @@ export function buildAppsList(host) {
 
         for (const [id, btn] of host._buttons.entries()) {
             if (!toKeep.has(id)) {
+                // 🟢 Zabezpieczenie przed GC i already disposed
+                if (typeof btn._cleanup === 'function') btn._cleanup();
                 try { 
-                    btn.remove_all_transitions(); // 🟢 Zdejmuje animacje bezpiecznie PRZED śmiercią 
+                    btn.remove_all_transitions(); 
                     btn.destroy(); 
                 } catch(e) {}
                 host._buttons.delete(id);
@@ -118,6 +120,7 @@ export function buildAppsList(host) {
         const tracker = Shell.WindowTracker.get_default();
         const focusApp = tracker.focus_app;
         for (const [id, btn] of host._buttons.entries()) {
+            if (btn._isDestroyed) continue; // 🟢 Bezpiecznik przed edycją zniszczonych przycisków
             try {
                 const app = btn.app;
                 const running = app.get_state() === Shell.AppState.RUNNING;
@@ -159,6 +162,14 @@ export function buildAppsList(host) {
                 rebuildApps();
             }
         })]);
+    };
+
+    // 🟢 Ręczne sprzątanie dla paska
+    appBox._cleanup = () => {
+        for (const [id, btn] of host._buttons.entries()) {
+            if (typeof btn._cleanup === 'function') btn._cleanup();
+        }
+        host._buttons.clear();
     };
 
     return { actor: appBox, rebuildApps, connectSignals };

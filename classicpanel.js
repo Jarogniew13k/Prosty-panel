@@ -15,7 +15,7 @@ import { buildAppsList }      from './apps-list.js';
 import { buildTrayArrow, closeTrayPopup } from './tray-popup.js';
 import { buildSystemGroup }   from './system-group.js';
 import { buildClock }         from './clock.js';
-import { buildExtraStatus }   from './extra-status.js'; // 🟢 Nowy import
+import { buildExtraStatus }   from './extra-status.js';
 
 export const BottomTaskbar = GObject.registerClass({
     Signals: { 
@@ -33,14 +33,23 @@ export const BottomTaskbar = GObject.registerClass({
         this._signalIds = [];
         this._ready     = false;
         this._sysBindIdleId = 0;
+        this._startupId = 0;
         this._openMenus = new Set();
         this._buildLeft(); this._buildCenterSpacer(); this._buildRight();
         this._apps.rebuildApps(); this._apps.connectSignals();
         this._clock.startClock(); this._clock.bindNotifications();
         this._sys.bindSystemIndicators(); this._applyTheme();
-        this._readyTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => {
-            this._ready = true; this._readyTimer = 0; return GLib.SOURCE_REMOVE;
-        });
+        
+        // 🟢 Profesjonalne sprawdzanie gotowości GNOME (zamiast sztywnych 800ms)
+        if (Main.layoutManager._startingUp) {
+            this._startupId = Main.layoutManager.connect('startup-complete', () => {
+                this._ready = true;
+                Main.layoutManager.disconnect(this._startupId);
+                this._startupId = 0;
+            });
+        } else {
+            this._ready = true;
+        }
     }
 
     _applyTheme() {
@@ -73,7 +82,18 @@ export const BottomTaskbar = GObject.registerClass({
         addSpacerMenuItem('Files', 'nautilus');
         this._spacerMenu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         addSpacerMenuItem('Ustawienia GNOME', 'gnome-control-center');
-        addSpacerMenuItem('Ustawienia panelu', 'gnome-extensions prefs gnome-panel@user.local');
+        
+        // 🟢 Bezpieczne wywołanie ustawień (GNOME 45+) bez wymuszania CLI
+        addSpacerMenuItem('Ustawienia panelu', null, () => {
+            const extensionObject = Main.extensionManager.lookup('gnome-panel@user.local');
+            if (extensionObject && typeof extensionObject.openPreferences === 'function') {
+                extensionObject.openPreferences();
+            } else {
+                // Bezpieczny "fallback", gdyby lookup zawiódł
+                Util.spawnCommandLine('gnome-extensions prefs gnome-panel@user.local');
+            }
+        });
+        
         this._spacerMenu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         addSpacerMenuItem('Pokaż pulpit', null, () => {
             const ws = global.workspace_manager.get_active_workspace();
@@ -98,7 +118,11 @@ export const BottomTaskbar = GObject.registerClass({
         this.add_child(makeSep()); this._clock = buildClock(this); this.add_child(this._clock.actor);
     }
 
-    destroy() {
+    // 🟢 Ręczne sprzątanie paska omijające Garbage Collectora GNOME
+    _cleanup() {
+        this._panelDestroyed = true;
+        this._ready = false;
+
         if (this._extraStatusCleanup) this._extraStatusCleanup();
         if (this._trayPopup) { closeTrayPopup(this); this._trayPopup = null; this._trayPopupStageId = 0; }
         for (const menu of this._openMenus) {
@@ -107,9 +131,12 @@ export const BottomTaskbar = GObject.registerClass({
         this._openMenus.clear();
         if (this._spacerMenu) { this._spacerMenu.destroy(); this._spacerMenu = null; }
         if (this._sysBindIdleId) { GLib.source_remove(this._sysBindIdleId); this._sysBindIdleId = 0; }
-        for (const btn of this._buttons.values()) btn.destroy();
-        this._buttons.clear();
 
+        if (this._apps && typeof this._apps.actor._cleanup === 'function') {
+            this._apps.actor._cleanup();
+        }
+
+        // 🟢 Uniwersalny mechanizm na usuwanie sygnałów GObject ORAZ GLib timeoutów
         for (const [obj, id] of this._signalIds) { 
             try { 
                 if (obj === null) { GLib.source_remove(id); }
@@ -120,9 +147,13 @@ export const BottomTaskbar = GObject.registerClass({
         }
         this._signalIds = [];
         this._clock?.stopClock();
+
+        if (this._startupId) {
+            try { Main.layoutManager.disconnect(this._startupId); } catch(e) {}
+            this._startupId = 0;
+        }
+        
         if (this._readyTimer) { GLib.source_remove(this._readyTimer); this._readyTimer = 0; }
-        this._panelDestroyed = true;
-        super.destroy();
     }
 });
 
@@ -140,10 +171,20 @@ export class ClassicPanel {
         if (this._themeId) { this._settings.disconnect(this._themeId); this._themeId = 0; }
         if (this._monitorId) { Main.layoutManager.disconnect(this._monitorId); this._monitorId = null; }
         this._showTopPanel();
-        Main.layoutManager.removeChrome(this._bar); this._bar.destroy(); this._bar = null;
+        
+        if (this._bar) {
+            if (typeof this._bar._cleanup === 'function') this._bar._cleanup();
+            Main.layoutManager.removeChrome(this._bar); 
+            this._bar.destroy(); 
+            this._bar = null;
+        }
     }
+    
+    // 🟢 Przezroczystość zamiast .hide(), by taca działała prawidłowo
     _hideTopPanel() {
-        Main.panel.hide(); Main.layoutManager.panelBox.hide();
+        Main.panel.opacity = 0; 
+        Main.layoutManager.panelBox.opacity = 0;
+        Main.layoutManager.panelBox.translation_y = -200;
         let idx = Main.layoutManager._findActor(Main.layoutManager.panelBox);
         if (idx >= 0) {
             this._oldAffectsStruts = Main.layoutManager._trackedActors[idx].affectsStruts;
@@ -153,7 +194,9 @@ export class ClassicPanel {
         if (Main.overview?.dash) { this._dashOrigVisible = Main.overview.dash.visible; this._dashOrigShow = Main.overview.dash.show; Main.overview.dash.show = function() {}; Main.overview.dash.hide(); }
     }
     _showTopPanel() {
-        Main.layoutManager.panelBox.show(); Main.panel.show();
+        Main.panel.opacity = 255; 
+        Main.layoutManager.panelBox.opacity = 255;
+        Main.layoutManager.panelBox.translation_y = 0;
         if (this._oldAffectsStruts !== undefined) {
             let idx = Main.layoutManager._findActor(Main.layoutManager.panelBox);
             if (idx >= 0) Main.layoutManager._trackedActors[idx].affectsStruts = this._oldAffectsStruts;

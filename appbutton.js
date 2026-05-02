@@ -1,4 +1,4 @@
-// Prosty Panel — appbutton.js (Fix dla G_IS_OBJECT)
+// Prosty Panel — appbutton.js (poprawiony drag & drop z widocznym markerem)
 
 import GObject  from 'gi://GObject';
 import St       from 'gi://St';
@@ -8,6 +8,8 @@ import GLib     from 'gi://GLib';
 import * as Main         from 'resource:///org/gnome/shell/ui/main.js';
 import * as AppFavorites from 'resource:///org/gnome/shell/ui/appFavorites.js';
 import * as PopupMenu    from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import * as WindowPreview from 'resource:///org/gnome/shell/ui/windowPreview.js';
+import * as DND          from 'resource:///org/gnome/shell/ui/dnd.js';
 
 import { ICON_SIZE, HOVER_DELAY_MS, HIDE_DELAY_MS, PREVIEW_W, PREVIEW_H } from './constants.js';
 import { openMenuAboveBar } from './utils.js';
@@ -20,8 +22,21 @@ function killAllTransitions(actor) {
     }
 }
 
-export const AppButton = GObject.registerClass(
-class AppButton extends St.Button {
+function safeDisconnect(obj, idProp, target) {
+    if (target[idProp] && target[idProp] > 0) {
+        if (GObject.signal_handler_is_connected(obj, target[idProp])) {
+            obj.disconnect(target[idProp]);
+        }
+        target[idProp] = 0;
+    }
+}
+
+export const AppButton = GObject.registerClass({
+    Signals: {
+        'menu-opened': {},
+        'menu-closed': {}
+    }
+}, class AppButton extends St.Button {
     _init(app) {
         super._init({
             style_class : 'tb-app-btn',
@@ -40,22 +55,34 @@ class AppButton extends St.Button {
         this._isDestroyed  = false; 
         this._cachedBar    = null;
 
+        this._delegate = this;
+        this._draggable = DND.makeDraggable(this);
+
         const box = new St.BoxLayout({
             vertical : true,
             x_align  : Clutter.ActorAlign.CENTER,
             y_align  : Clutter.ActorAlign.CENTER,
         });
         this.set_child(box);
-        box.add_child(app.create_icon_texture(ICON_SIZE));
+        
+        this._iconContainer = new St.Widget({
+            layout_manager: new Clutter.BinLayout(),
+            x_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'tb-app-icon-container'
+        });
+        box.add_child(this._iconContainer);
+        
         this._dot = new St.Widget({ style_class : 'tb-dot', x_align : Clutter.ActorAlign.CENTER, width : 0 });
         box.add_child(this._dot);
 
         this._tooltip = new St.Label({ style_class: 'tb-tooltip', opacity: 0, text: app.get_name() });
         Main.layoutManager.addTopChrome(this._tooltip);
 
+        this._updateIcon();
+        
         this.connect('notify::hover', this._onHover.bind(this));
         this.connect('button-press-event', this._onButtonPress.bind(this));
-        this.connect('destroy',       this._onDestroy.bind(this));
     }
 
     _getThemeClass() {
@@ -71,6 +98,13 @@ class AppButton extends St.Button {
         return null;
     }
 
+    _updateIcon() {
+        if (this._isDestroyed) return;
+        try { this._iconContainer.remove_all_children(); } catch(e) {}
+        const icon = this._app.create_icon_texture(ICON_SIZE);
+        this._iconContainer.add_child(icon);
+    }
+
     _onButtonPress(_a, ev) {
         if (this._isDestroyed || !this.get_reactive()) return Clutter.EVENT_PROPAGATE;
         
@@ -78,7 +112,13 @@ class AppButton extends St.Button {
         
         if (btn === 1) {
             const [sx, sy] = ev.get_coords();
+            if (this._press) {
+                safeDisconnect(global.stage, 'motionId', this._press);
+                safeDisconnect(global.stage, 'releaseId', this._press);
+            }
+            
             this._press = { x: sx, y: sy, dragging: false, motionId: 0, releaseId: 0 };
+            
             this._press.motionId = global.stage.connect('motion-event', (_a2, mev) => {
                 if (!this._press || this._isDestroyed) return Clutter.EVENT_PROPAGATE;
                 const [mx, my] = mev.get_coords();
@@ -89,12 +129,19 @@ class AppButton extends St.Button {
                 if (this._press.dragging) this._dragMotion(mx, my);
                 return Clutter.EVENT_PROPAGATE;
             });
+
             this._press.releaseId = global.stage.connect('button-release-event', (_a2, rev) => {
-                if (this._press) { global.stage.disconnect(this._press.motionId); global.stage.disconnect(this._press.releaseId); }
                 if (!this._press || this._isDestroyed) return Clutter.EVENT_PROPAGATE;
-                if (this._press.dragging) this._dragEnd(rev.get_coords()[0], rev.get_coords()[1]);
+                
+                const press = this._press;
+                safeDisconnect(global.stage, 'motionId', press);
+                safeDisconnect(global.stage, 'releaseId', press);
+                
+                if (press.dragging) this._dragEnd();
                 else this._onClick();
-                this._press = null; return Clutter.EVENT_STOP;
+                
+                this._press = null; 
+                return Clutter.EVENT_STOP;
             });
             return Clutter.EVENT_STOP;
         }
@@ -106,13 +153,18 @@ class AppButton extends St.Button {
                 const wins = this._app.get_windows();
                 for (const w of wins) w.delete(global.get_current_time());
             } else {
-                if (this._app.can_open_new_window?.()) this._app.open_new_window(-1);
-                else this._app.activate();
+                if (typeof this._app.can_open_new_window === 'function' && this._app.can_open_new_window()) {
+                    this._app.open_new_window(-1);
+                } else {
+                    this._app.activate();
+                }
             }
             return Clutter.EVENT_STOP;
         }
 
         if (btn === 3) { 
+            // Blokada menu podczas przeciągania
+            if (this._press && this._press.dragging) return Clutter.EVENT_STOP;
             this._showContextMenu(); 
             return Clutter.EVENT_STOP; 
         }
@@ -130,9 +182,11 @@ class AppButton extends St.Button {
         
         if (!this._dropMarker) {
             this._dropMarker = new St.Widget({ 
-                style_class: 'tb-drop-marker', 
-                style: 'background-color: rgba(255, 255, 255, 0.86);' 
+                style_class: 'tb-drop-marker'
             });
+            // Dodaj klasę motywu, aby marker był widoczny (kolor zgodny z motywem)
+            const themeClass = this._getThemeClass();
+            if (themeClass) this._dropMarker.add_style_class_name(themeClass);
             this._dropMarker.hide();
         }
         Main.uiGroup.add_child(this._dropMarker);
@@ -168,8 +222,9 @@ class AppButton extends St.Button {
             }
         } else { markerX = boxX; }
         if (this._dropMarker) {
-            this._dropMarker.set_size(2, this.height - 12);
-            this._dropMarker.set_position(Math.round(markerX - 1), Math.round(boxY + 6));
+            // Wyraźny marker – szerokość 3px, wysokość dostosowana
+            this._dropMarker.set_size(3, this.height - 12);
+            this._dropMarker.set_position(Math.round(markerX - 1.5), Math.round(boxY + 6));
             this._dropMarker.show();
         }
         this._dropTarget = { unfavorite: false, insertIndex: baseIndex + localIdx };
@@ -231,7 +286,13 @@ class AppButton extends St.Button {
         }
         
         const newItem = new PopupMenu.PopupMenuItem('Nowe okno');
-        newItem.connect('activate', () => { app.can_open_new_window?.() ? app.open_new_window(-1) : app.activate(); });
+        newItem.connect('activate', () => { 
+            if (typeof app.can_open_new_window === 'function' && app.can_open_new_window()) {
+                app.open_new_window(-1);
+            } else {
+                app.activate();
+            }
+        });
         this._menu.addMenuItem(newItem);
         
         this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -525,21 +586,36 @@ class AppButton extends St.Button {
         else { const f = wins.find(w => w.has_focus()); Main.activateWindow(f ? wins[(wins.indexOf(f) + 1) % wins.length] : wins[0]); }
     }
 
-    _onDestroy() {
-        // ZABEZPIECZENIE PRZED G_IS_OBJECT: Zdejmujemy killAllTransitions(this) stąd!
-        // Dzieci zostaną bezpiecznie uśmiercone przez Clutter.
+    _cleanup() {
+        this._isDestroyed = true; 
 
-        if (this._press && this._press.dragging) {
-            this._emitBarSignal('drag-end');
+        if (this._press) {
+            if (this._press.dragging) {
+                this._emitBarSignal('drag-end');
+            }
+            safeDisconnect(global.stage, 'motionId', this._press);
+            safeDisconnect(global.stage, 'releaseId', this._press);
         }
         
-        if (this._press) { if (this._press.motionId) global.stage.disconnect(this._press.motionId); if (this._press.releaseId) global.stage.disconnect(this._press.releaseId); }
-        if (this._dragActor) this._dragActor.destroy();
-        if (this._dropMarker) { if (this._dropMarker.get_parent()) Main.uiGroup.remove_child(this._dropMarker); this._dropMarker.destroy(); }
-        if (this._hideTimerId) GLib.source_remove(this._hideTimerId);
-        if (this._previewHoverTimer) GLib.source_remove(this._previewHoverTimer);
-        if (this._hoverTimeout) GLib.source_remove(this._hoverTimeout);
-        if (this._winSignalId) this._app.disconnect(this._winSignalId);
+        if (this._draggable) {
+            this._draggable.disconnectAll();
+            this._draggable = null;
+        }
+        
+        if (this._dragActor) {
+            this._dragActor.destroy();
+            this._dragActor = null;
+        }
+        if (this._dropMarker) { 
+            if (this._dropMarker.get_parent()) Main.uiGroup.remove_child(this._dropMarker); 
+            this._dropMarker.destroy(); 
+            this._dropMarker = null;
+        }
+        
+        if (this._hideTimerId) { GLib.source_remove(this._hideTimerId); this._hideTimerId = null; }
+        if (this._previewHoverTimer) { GLib.source_remove(this._previewHoverTimer); this._previewHoverTimer = null; }
+        if (this._hoverTimeout) { GLib.source_remove(this._hoverTimeout); this._hoverTimeout = null; }
+        if (this._winSignalId) { this._app.disconnect(this._winSignalId); this._winSignalId = null; }
         
         if (this._menu) {
             this._menu.destroy();
@@ -559,8 +635,6 @@ class AppButton extends St.Button {
             if (this._tooltip.get_parent()) Main.layoutManager.removeChrome(this._tooltip); 
             this._tooltip.destroy(); 
         }
-
-        this._isDestroyed = true; 
     }
 
     get app() { return this._app; }

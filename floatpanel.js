@@ -1,4 +1,4 @@
-// Prosty Panel — floatpanel.js (Fix dla G_IS_OBJECT Tracker)
+// Prosty Panel — floatpanel.js
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -87,7 +87,13 @@ export class FloatPanel {
         
         if (this._intellihide) { this._intellihide.disable(); this._intellihide = null; }
         if (this._dummyStrut) { Main.layoutManager.removeChrome(this._dummyStrut); this._dummyStrut.destroy(); this._dummyStrut = null; }
-        if (this._bar) { Main.layoutManager.removeChrome(this._bar); this._bar.destroy(); }
+        
+        if (this._bar) { 
+            if (typeof this._bar._cleanup === 'function') this._bar._cleanup(); // 🟢
+            Main.layoutManager.removeChrome(this._bar); 
+            this._bar.destroy(); 
+            this._bar = null;
+        }
         
         this._enableUnredirect();
         this._showTopPanel();
@@ -141,7 +147,6 @@ export class FloatPanel {
         const signals = [ 'size-changed', 'position-changed', 'notify::fullscreen', 'notify::maximized-horizontally', 'notify::maximized-vertically', 'notify::minimized' ];
         for (const sig of signals) { try { ids.push(win.connect(sig, cb)); } catch(e) {} }
 
-        // 🟢 FIX: Nasłuch na odpięcie od systemu, uwalnia sygnały ZANIM okno ulegnie zniszczeniu
         const unmanagedId = win.connect('unmanaged', () => {
             this._untrackWindow(win);
             this._trackedWindows.delete(win);
@@ -273,9 +278,11 @@ export class FloatPanel {
         }
     }
 
+    // 🟢 Przezroczystość dla tacy
     _hideTopPanel() {
-        Main.panel.hide();
-        Main.layoutManager.panelBox.hide();
+        Main.panel.opacity = 0; 
+        Main.layoutManager.panelBox.opacity = 0;
+        Main.layoutManager.panelBox.translation_y = -200;
         let idx = Main.layoutManager._findActor(Main.layoutManager.panelBox);
         if (idx >= 0) {
             this._oldAffectsStruts = Main.layoutManager._trackedActors[idx].affectsStruts;
@@ -291,15 +298,16 @@ export class FloatPanel {
     }
 
     _showTopPanel() {
-        Main.layoutManager.panelBox.show();
-        Main.panel.show();
+        Main.panel.opacity = 255; 
+        Main.layoutManager.panelBox.opacity = 255;
+        Main.layoutManager.panelBox.translation_y = 0;
         if (this._oldAffectsStruts !== undefined) {
             let idx = Main.layoutManager._findActor(Main.layoutManager.panelBox);
             if (idx >= 0) Main.layoutManager._trackedActors[idx].affectsStruts = this._oldAffectsStruts;
             this._oldAffectsStruts = undefined;
             Main.layoutManager._queueUpdateRegions();
         }
-        if (Main.overview?.dash && this._dashOrigShow) {
+        if (Main.overview?.dash && this._dashOrigShow !== undefined) {
             Main.overview.dash.show = this._dashOrigShow;
             Main.overview.dash.visible = this._dashOrigVisible;
             this._dashOrigShow = undefined;

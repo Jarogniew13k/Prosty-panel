@@ -1,4 +1,4 @@
-// Prosty Panel — tray-popup.js (final z zabezpieczeniem animacji destrukcji)
+// Prosty Panel — tray-popup.js (Hybrydowa wersja: St.Icon + Clutter.Clone Fallback)
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -34,19 +34,27 @@ export function buildTrayArrow(host) {
 function findTrayIndicators() {
     const out = [];
     const statusArea = Main.panel.statusArea;
+    
     for (const key in statusArea) {
         if (!key.startsWith('appindicator-')) continue;
         const btn = statusArea[key];
         if (!btn) continue;
+        
         let icon = null;
         const walk = (a) => {
             if (icon) return;
-            if (a instanceof St.Icon) { icon = a; return; }
+            if (!a.visible) return; 
+            
+            if (a instanceof St.Icon) { 
+                icon = a; 
+                return; 
+            }
             if (typeof a.get_children === 'function') {
                 for (const c of a.get_children()) walk(c);
             }
         };
         walk(btn);
+        
         if (icon) out.push({ button: btn, icon });
     }
     return out;
@@ -72,14 +80,11 @@ function toggleTrayPopup(host, sourceButton) {
 
     const themeClass = getThemeClass(host);
     popup.add_style_class_name(themeClass);
-    console.log('[Tray] Theme class added:', themeClass);
 
     const box = new St.BoxLayout({
         style_class: 'tb-tray-popup-box',
         y_align: Clutter.ActorAlign.CENTER,
     });
-
-    const reparentedIcons = [];
 
     if (items.length === 0) {
         const lbl = new St.Label({
@@ -95,28 +100,66 @@ function toggleTrayPopup(host, sourceButton) {
                 reactive: true,
                 can_focus: true,
                 track_hover: true,
+                // Blokujemy rozciąganie przycisku przez layout
+                x_expand: false,
+                y_expand: false,
+                width: 32,
+                height: 32,
+            });
+
+            let displayIcon;
+
+            // 🟢 PODEJŚCIE HYBRYDOWE
+            if (icon.gicon || icon.icon_name) {
+                // Jeśli ikona ma tożsamość, tworzymy nowy St.Icon z twardą blokadą rozmiaru
+                displayIcon = new St.Icon({
+                    icon_size: 16,
+                    gicon: icon.gicon,
+                    icon_name: icon.icon_name,
+                    x_align: Clutter.ActorAlign.CENTER,
+                    y_align: Clutter.ActorAlign.CENTER,
+                });
+
+                // Synchronizacja zmian (np. kropka powiadomienia na ikonie)
+                icon.connectObject(
+                    'notify::gicon', () => { displayIcon.gicon = icon.gicon; },
+                    'notify::icon-name', () => { displayIcon.icon_name = icon.icon_name; },
+                    popup // Sygnały zostaną rozłączone automatycznie przy zniszczeniu popupa
+                );
+            } else {
+                // Fallback dla ikon bez gicon/icon_name (rzadkie przypadki)
+                displayIcon = new Clutter.Clone({
+                    source: icon,
+                    width: 16,
+                    height: 16,
+                    x_align: Clutter.ActorAlign.CENTER,
+                    y_align: Clutter.ActorAlign.CENTER,
+                });
+            }
+
+            const iconWrapper = new St.Bin({
+                child: displayIcon,
+                width: 16,
+                height: 16,
+                x_align: Clutter.ActorAlign.CENTER,
                 y_align: Clutter.ActorAlign.CENTER,
             });
 
-            const originalParent = icon.get_parent();
-            if (originalParent) {
-                originalParent.remove_child(icon);
-            }
-            cellBtn.set_child(icon);
-            reparentedIcons.push({ icon, originalParent });
+            cellBtn.set_child(iconWrapper);
 
             cellBtn.connect('button-press-event', (_a, ev) => {
                 if (button.menu) {
                     if (button.menu.isOpen) {
                         button.menu.close();
                     } else {
-                        if (host._trayAppMenu && host._trayAppMenu !== button.menu &&
-                            host._trayAppMenu.isOpen) {
+                        if (host._trayAppMenu && host._trayAppMenu !== button.menu && host._trayAppMenu.isOpen) {
                             host._trayAppMenu.close();
                         }
                         openMenuAboveBar(button.menu, sourceButton, 4, popup);
                         host._trayAppMenu = button.menu;
                     }
+                } else {
+                    button.emit('button-press-event', ev);
                 }
                 return Clutter.EVENT_STOP;
             });
@@ -124,41 +167,37 @@ function toggleTrayPopup(host, sourceButton) {
             box.add_child(cellBtn);
         }
     }
+    
     popup.set_child(box);
-    popup._reparentedIcons = reparentedIcons;
     popup._tbForceClosing = false;
 
     Main.uiGroup.add_child(popup);
     popup.opacity = 0;
 
     const mon = Main.layoutManager.primaryMonitor;
-
     let barTop;
     let panel = _getBarFor(sourceButton);
     if (panel && panel.has_style_class_name('mode-floating')) {
-        const margin = 8;
-        barTop = mon.y + mon.height - PANEL_HEIGHT - margin;
+        barTop = mon.y + mon.height - PANEL_HEIGHT - 8;
     } else {
         barTop = mon.y + mon.height - PANEL_HEIGHT;
     }
 
-    if (!host._trayPopupPositionId) host._trayPopupPositionId = 0;
-
     host._trayPopupPositionId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-        if (!host._trayPopup) {
-            host._trayPopupPositionId = 0;
-            return GLib.SOURCE_REMOVE;
-        }
+        if (!host._trayPopup) return GLib.SOURCE_REMOVE;
         const w = popup.width;
         const h = popup.height;
         const [bx] = sourceButton.get_transformed_position();
         const bw = sourceButton.get_width();
         let x = bx + (bw / 2) - (w / 2);
+        
         const minX = mon.x + 4;
         const maxX = mon.x + mon.width - w - 4;
         if (x < minX) x = minX;
         if (x > maxX) x = maxX;
+        
         const y = barTop - h - 4;
+        
         popup.set_position(Math.floor(x), Math.floor(y));
         popup.ease({
             opacity: 255,
@@ -174,9 +213,11 @@ function toggleTrayPopup(host, sourceButton) {
         const [px, py] = popup.get_transformed_position();
         const pw = popup.width, ph = popup.height;
         const insidePopup = (sx >= px && sx <= px + pw && sy >= py && sy <= py + ph);
+        
         const [ax, ay] = sourceButton.get_transformed_position();
         const aw = sourceButton.get_width(), ah = sourceButton.get_height();
         const onArrow = (sx >= ax && sx <= ax + aw && sy >= ay && sy <= ay + ah);
+        
         if (!insidePopup && !onArrow) {
             GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
                 if (host._trayPopup) closeTrayPopup(host);
@@ -189,7 +230,7 @@ function toggleTrayPopup(host, sourceButton) {
     host._trayPopup = popup;
     if (host._openMenus) host._openMenus.add(popup);
 
-    try { host.emit('menu-opened'); } catch (e) { console.debug('[Prosty Panel] Error:', e); }
+    try { host.emit('menu-opened'); } catch (e) {}
 }
 
 export function closeTrayPopup(host) {
@@ -202,7 +243,7 @@ export function closeTrayPopup(host) {
         host._trayPopupStageId = 0;
     }
 
-    try { host.emit('menu-closed'); } catch (e) { console.debug('[Prosty Panel] Error:', e); }
+    try { host.emit('menu-closed'); } catch (e) {}
 
     if (host._trayPopupPositionId) {
         GLib.source_remove(host._trayPopupPositionId);
@@ -216,25 +257,13 @@ export function closeTrayPopup(host) {
     }
     host._trayAppMenu = null;
 
-    const reparented = popup._reparentedIcons || [];
-    for (const { icon, originalParent } of reparented) {
-        try {
-            const currentParent = icon.get_parent();
-            if (currentParent) currentParent.remove_child(icon);
-            if (originalParent) originalParent.add_child(icon);
-        } catch (e) { console.debug('[Prosty Panel] Error reparenting icon:', e); }
-    }
-    popup._reparentedIcons = null;
-
     if (host._openMenus) host._openMenus.delete(popup);
 
-    // Jeśli pasek jest niszczony lub popup nie jest na scenie - usuń natychmiast
     if (host._panelDestroyed || !popup.get_stage()) {
         popup.remove_all_transitions();
         if (popup.get_parent()) Main.uiGroup.remove_child(popup);
         popup.destroy();
     } else {
-        // W normalnych warunkach zrób płynną animację
         popup.ease({
             opacity: 0,
             duration: 150,
