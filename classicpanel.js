@@ -1,4 +1,4 @@
-// Prosty Panel — classicpanel.js
+// Prosty Panel — classicpanel.js (Bez monkey-patchingu, dynamiczne skalowanie)
 
 import GObject from 'gi://GObject';
 import St      from 'gi://St';
@@ -30,17 +30,17 @@ export const BottomTaskbar = GObject.registerClass({
         });
         this._settings = settings;
         this._buttons   = new Map();
-        this._signalIds = [];
         this._ready     = false;
         this._sysBindIdleId = 0;
         this._startupId = 0;
         this._openMenus = new Set();
+        
         this._buildLeft(); this._buildCenterSpacer(); this._buildRight();
+        
         this._apps.rebuildApps(); this._apps.connectSignals();
         this._clock.startClock(); this._clock.bindNotifications();
         this._sys.bindSystemIndicators(); this._applyTheme();
         
-        // 🟢 Profesjonalne sprawdzanie gotowości GNOME (zamiast sztywnych 800ms)
         if (Main.layoutManager._startingUp) {
             this._startupId = Main.layoutManager.connect('startup-complete', () => {
                 this._ready = true;
@@ -83,15 +83,10 @@ export const BottomTaskbar = GObject.registerClass({
         this._spacerMenu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         addSpacerMenuItem('Ustawienia GNOME', 'gnome-control-center');
         
-        // 🟢 Bezpieczne wywołanie ustawień (GNOME 45+) bez wymuszania CLI
         addSpacerMenuItem('Ustawienia panelu', null, () => {
             const extensionObject = Main.extensionManager.lookup('gnome-panel@user.local');
-            if (extensionObject && typeof extensionObject.openPreferences === 'function') {
-                extensionObject.openPreferences();
-            } else {
-                // Bezpieczny "fallback", gdyby lookup zawiódł
-                Util.spawnCommandLine('gnome-extensions prefs gnome-panel@user.local');
-            }
+            if (extensionObject && typeof extensionObject.openPreferences === 'function') extensionObject.openPreferences();
+            else Util.spawnCommandLine('gnome-extensions prefs gnome-panel@user.local');
         });
         
         this._spacerMenu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -118,7 +113,6 @@ export const BottomTaskbar = GObject.registerClass({
         this.add_child(makeSep()); this._clock = buildClock(this); this.add_child(this._clock.actor);
     }
 
-    // 🟢 Ręczne sprzątanie paska omijające Garbage Collectora GNOME
     _cleanup() {
         this._panelDestroyed = true;
         this._ready = false;
@@ -132,27 +126,13 @@ export const BottomTaskbar = GObject.registerClass({
         if (this._spacerMenu) { this._spacerMenu.destroy(); this._spacerMenu = null; }
         if (this._sysBindIdleId) { GLib.source_remove(this._sysBindIdleId); this._sysBindIdleId = 0; }
 
-        if (this._apps && typeof this._apps.actor._cleanup === 'function') {
-            this._apps.actor._cleanup();
-        }
-
-        // 🟢 Uniwersalny mechanizm na usuwanie sygnałów GObject ORAZ GLib timeoutów
-        for (const [obj, id] of this._signalIds) { 
-            try { 
-                if (obj === null) { GLib.source_remove(id); }
-                else if (obj && typeof obj.disconnect === 'function') {
-                    if (GObject.signal_handler_is_connected(obj, id)) obj.disconnect(id); 
-                }
-            } catch(e) {} 
-        }
-        this._signalIds = [];
+        if (this._apps && typeof this._apps.actor._cleanup === 'function') this._apps.actor._cleanup();
         this._clock?.stopClock();
 
         if (this._startupId) {
             try { Main.layoutManager.disconnect(this._startupId); } catch(e) {}
             this._startupId = 0;
         }
-        
         if (this._readyTimer) { GLib.source_remove(this._readyTimer); this._readyTimer = 0; }
     }
 });
@@ -180,33 +160,49 @@ export class ClassicPanel {
         }
     }
     
-    // 🟢 Przezroczystość zamiast .hide(), by taca działała prawidłowo
     _hideTopPanel() {
         Main.panel.opacity = 0; 
         Main.layoutManager.panelBox.opacity = 0;
-        Main.layoutManager.panelBox.translation_y = -200;
+        // 🟢 FIX: Dynamiczne wyliczanie wysokości (odporne na monitory 4K / rozszerzenia)
+        const panelHeight = Main.layoutManager.panelBox.height || 40;
+        Main.layoutManager.panelBox.translation_y = -panelHeight;
+        
         let idx = Main.layoutManager._findActor(Main.layoutManager.panelBox);
         if (idx >= 0) {
             this._oldAffectsStruts = Main.layoutManager._trackedActors[idx].affectsStruts;
             Main.layoutManager._trackedActors[idx].affectsStruts = false;
             Main.layoutManager._queueUpdateRegions();
         }
-        if (Main.overview?.dash) { this._dashOrigVisible = Main.overview.dash.visible; this._dashOrigShow = Main.overview.dash.show; Main.overview.dash.show = function() {}; Main.overview.dash.hide(); }
+        
+        // 🟢 FIX: Bezpieczne ukrywanie Dasha (brak wstrzykiwania funkcji w rdzeń GNOME)
+        if (Main.overview?.dash) { 
+            this._dashOrigOpacity = Main.overview.dash.opacity;
+            this._dashOrigReactive = Main.overview.dash.reactive;
+            Main.overview.dash.opacity = 0;
+            Main.overview.dash.reactive = false;
+        }
     }
+    
     _showTopPanel() {
         Main.panel.opacity = 255; 
         Main.layoutManager.panelBox.opacity = 255;
         Main.layoutManager.panelBox.translation_y = 0;
+        
         if (this._oldAffectsStruts !== undefined) {
             let idx = Main.layoutManager._findActor(Main.layoutManager.panelBox);
             if (idx >= 0) Main.layoutManager._trackedActors[idx].affectsStruts = this._oldAffectsStruts;
-            this._oldAffectsStruts = undefined; Main.layoutManager._queueUpdateRegions();
+            this._oldAffectsStruts = undefined; 
+            Main.layoutManager._queueUpdateRegions();
         }
-        if (Main.overview?.dash && this._dashOrigShow !== undefined) {
-            Main.overview.dash.show = this._dashOrigShow; Main.overview.dash.visible = this._dashOrigVisible;
-            this._dashOrigShow = undefined; this._dashOrigVisible = undefined;
+        
+        if (Main.overview?.dash) {
+            if (this._dashOrigOpacity !== undefined) Main.overview.dash.opacity = this._dashOrigOpacity;
+            if (this._dashOrigReactive !== undefined) Main.overview.dash.reactive = this._dashOrigReactive;
+            this._dashOrigOpacity = undefined;
+            this._dashOrigReactive = undefined;
         }
     }
+    
     _reposition() {
         const mon = Main.layoutManager.primaryMonitor;
         this._bar.set_position(mon.x, mon.y + mon.height - PANEL_HEIGHT);

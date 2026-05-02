@@ -1,4 +1,4 @@
-// Prosty Panel — extra-status.js (Wydzielone wskaźniki specjalne i pastylki)
+// Prosty Panel — extra-status.js (GNOME 45+ Ready, connectObject)
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -14,9 +14,7 @@ export function buildExtraStatus(host) {
         style: 'spacing: 4px;'
     });
 
-    // ==========================================
-    // 1. NAGRYWANIE EKRANU (Czerwona Pastylka)
-    // ==========================================
+    // 1. NAGRYWANIE EKRANU
     const recBtn = new St.Button({
         style_class: 'tb-rec-pill',
         reactive: true,
@@ -38,16 +36,14 @@ export function buildExtraStatus(host) {
         }
     });
 
-    // ==========================================
-    // 2. UDOSTĘPNIANIE EKRANU (Pomarańczowa Pastylka)
-    // ==========================================
+    // 2. UDOSTĘPNIANIE EKRANU
     const shareBtn = new St.Button({
-        style_class: 'tb-rec-pill tb-share-btn', // Korzysta z kształtu pastylki i animacji pulsowania
+        style_class: 'tb-rec-pill tb-share-btn',
         reactive: true,
         can_focus: true,
         visible: false,
         y_align: Clutter.ActorAlign.CENTER,
-        style: 'background-color: #e66100;' // Wymuszenie pomarańczowego ostrzeżenia
+        style: 'background-color: #e66100;' 
     });
     const shareBox = new St.BoxLayout({ y_align: Clutter.ActorAlign.CENTER, style: 'spacing: 6px;' });
     const shareIcon = new St.Icon({ icon_name: 'camera-web-symbolic', icon_size: 14, style: 'color: #ffffff;' });
@@ -59,9 +55,7 @@ export function buildExtraStatus(host) {
         if (indicator && indicator.menu) openMenuAboveBar(indicator.menu, shareBtn, 4, null, true);
     });
 
-    // ==========================================
-    // 3. APLIKACJE W TLE (Niezależny przycisk)
-    // ==========================================
+    // 3. APLIKACJE W TLE
     const bgAppsBtn = new St.Button({
         style_class: 'tb-btn',
         reactive: true,
@@ -77,9 +71,7 @@ export function buildExtraStatus(host) {
         if (indicator && indicator.menu) openMenuAboveBar(indicator.menu, bgAppsBtn, 4, null, true);
     });
 
-    // ==========================================
     // 4. KLAWIATURA
-    // ==========================================
     const kbdBtn = new St.Button({
         style_class: 'tb-btn tb-kbd-btn',
         reactive: true,
@@ -95,46 +87,29 @@ export function buildExtraStatus(host) {
         if (kbd && kbd.menu) openMenuAboveBar(kbd.menu, kbdBtn, 4, null, true);
     });
 
-    // ==========================================
     // 5. POZOSTAŁE GENERYCZNE WSKAŹNIKI
-    // ==========================================
     const proxies = [
-        { id: 'camera', fallback: 'camera-web-symbolic', color: '#ff7800' }, // Ostrzeżenie: Kamera
-        { id: 'microphone', fallback: 'audio-input-microphone-symbolic', color: '#ff7800' }, // Ostrzeżenie: Mikrofon
-        { id: 'location', fallback: 'location-services-active-symbolic', color: '#3584e4' }, // Informacja: GPS
+        { id: 'camera', fallback: 'camera-web-symbolic', color: '#ff7800' },
+        { id: 'microphone', fallback: 'audio-input-microphone-symbolic', color: '#ff7800' },
+        { id: 'location', fallback: 'location-services-active-symbolic', color: '#3584e4' },
         { id: 'a11y', fallback: 'preferences-desktop-accessibility-symbolic', color: null },
         { id: 'dwellClick', fallback: 'pointer-drag-symbolic', color: null }
     ].map(config => {
-        const btn = new St.Button({
-            style_class: 'tb-btn',
-            reactive: true,
-            can_focus: true,
-            visible: false,
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-        const icon = new St.Icon({
-            icon_name: config.fallback,
-            icon_size: 16,
-            style_class: 'tb-btn-icon'
-        });
+        const btn = new St.Button({ style_class: 'tb-btn', reactive: true, can_focus: true, visible: false, y_align: Clutter.ActorAlign.CENTER });
+        const icon = new St.Icon({ icon_name: config.fallback, icon_size: 16, style_class: 'tb-btn-icon' });
         
         if (config.color) icon.style = `color: ${config.color};`;
         btn.set_child(icon);
 
         btn.connect('clicked', () => {
             const indicator = Main.panel.statusArea[config.id];
-            if (indicator && indicator.menu) {
-                openMenuAboveBar(indicator.menu, btn, 4, null, true);
-            }
+            if (indicator && indicator.menu) openMenuAboveBar(indicator.menu, btn, 4, null, true);
         });
 
         const sync = () => {
             if (host._panelDestroyed) return;
             const indicator = Main.panel.statusArea[config.id];
-            if (!indicator) {
-                btn.visible = false;
-                return;
-            }
+            if (!indicator) { btn.visible = false; return; }
             btn.visible = indicator.visible;
             
             if (indicator.visible) {
@@ -142,9 +117,7 @@ export function buildExtraStatus(host) {
                 const walk = (actor) => {
                     if (foundIcon) return;
                     if (actor instanceof St.Icon) { foundIcon = actor; return; }
-                    if (typeof actor.get_children === 'function') {
-                        for (const c of actor.get_children()) walk(c);
-                    }
+                    if (typeof actor.get_children === 'function') for (const c of actor.get_children()) walk(c);
                 };
                 walk(indicator);
                 if (foundIcon) {
@@ -159,18 +132,15 @@ export function buildExtraStatus(host) {
         return { btn, sync, id: config.id };
     });
 
-    // BUDOWANIE STRUKTURY WIDOKU
-    box.add_child(recBtn);                             // Nagrywanie
-    box.add_child(shareBtn);                           // Udostępnianie
-    box.add_child(bgAppsBtn);                          // Aplikacje w tle
-    proxies.forEach(p => box.add_child(p.btn));        // Kamera, Mikrofon, GPS
-    box.add_child(kbdBtn);                             // Klawiatura
+    box.add_child(recBtn);
+    box.add_child(shareBtn);
+    box.add_child(bgAppsBtn);
+    proxies.forEach(p => box.add_child(p.btn));
+    box.add_child(kbdBtn);
 
-    let kbdSourceSignal = 0;
     let recTimerId = 0;
     let isKbdTimeout = false; 
 
-    // Synchronizacje (Nagrywanie)
     const syncRec = () => {
         if (host._panelDestroyed) return;
         const sr = Main.panel.statusArea.screenRecording;
@@ -199,89 +169,83 @@ export function buildExtraStatus(host) {
         }
     };
 
-    // Synchronizacja (Udostępnianie Ekranu)
     const syncShare = () => {
         if (host._panelDestroyed) return;
         const ind = Main.panel.statusArea.screenSharing;
         shareBtn.visible = ind ? ind.visible : false;
     };
 
-    // Synchronizacja (Aplikacje w tle)
     const syncBgApps = () => {
         if (host._panelDestroyed) return;
         const ind = Main.panel.statusArea.backgroundApps;
         bgAppsBtn.visible = ind ? ind.visible : false;
     };
 
-    // Synchronizacja (Klawiatura)
     const syncKbd = () => {
         if (host._panelDestroyed) return;
         const kbd = Main.panel.statusArea.keyboard;
         if (!kbd) { kbdBtn.visible = false; return; }
         kbdBtn.visible = kbd.visible;
 
-        if (!kbdSourceSignal) {
-            try {
-                const ism = Keyboard.getInputSourceManager();
-                if (ism) {
-                    const updateLabel = () => {
-                        if (host._panelDestroyed) return;
-                        if (ism.currentSource && ism.currentSource.shortName) kbdLabel.set_text(ism.currentSource.shortName);
-                    };
-                    kbdSourceSignal = ism.connect('current-source-changed', updateLabel);
-                    isKbdTimeout = false;
-                    host._signalIds.push([ism, kbdSourceSignal]);
-                    updateLabel();
-                }
-            } catch (e) {
-                isKbdTimeout = true;
-                kbdSourceSignal = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
-                    if (host._panelDestroyed) { kbdSourceSignal = 0; return GLib.SOURCE_REMOVE; } 
-                    if (kbd.visible) {
-                        let text = '';
-                        if (kbd._indicator && typeof kbd._indicator.get_text === 'function') text = kbd._indicator.get_text();
-                        else if (kbd._label && typeof kbd._label.get_text === 'function') text = kbd._label.get_text();
-                        if (text) kbdLabel.set_text(text);
-                    }
-                    return GLib.SOURCE_CONTINUE;
-                });
-                host._signalIds.push([null, kbdSourceSignal]);
+        try {
+            const ism = Keyboard.getInputSourceManager();
+            if (ism) {
+                const updateLabel = () => {
+                    if (host._panelDestroyed) return;
+                    if (ism.currentSource && ism.currentSource.shortName) kbdLabel.set_text(ism.currentSource.shortName);
+                };
+                // 🟢 ConnectObject podpięty pod główne 'box' (kiedy pasek ginie, box ginie, a z nim sygnał)
+                ism.connectObject('current-source-changed', updateLabel, box);
+                isKbdTimeout = false;
+                updateLabel();
             }
+        } catch (e) {
+            // Starsze metody fallback
+            isKbdTimeout = true;
+            let kbdFallbackId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+                if (host._panelDestroyed || box.is_destroyed?.()) { kbdFallbackId = 0; return GLib.SOURCE_REMOVE; } 
+                if (kbd.visible) {
+                    let text = '';
+                    if (kbd._indicator && typeof kbd._indicator.get_text === 'function') text = kbd._indicator.get_text();
+                    else if (kbd._label && typeof kbd._label.get_text === 'function') text = kbd._label.get_text();
+                    if (text) kbdLabel.set_text(text);
+                }
+                return GLib.SOURCE_CONTINUE;
+            });
+            // Zachowujemy informację do posprzątania, jeśli użyto fallbacku (GLib.timeout_add nie da się zapiąć przez connectObject)
+            box._kbdFallbackId = kbdFallbackId;
         }
     };
 
-    // Inicjalizacja nasłuchu na zdarzenia systemowe GNOME
     GLib.idle_add(GLib.PRIORITY_LOW, () => {
         if (host._panelDestroyed) return GLib.SOURCE_REMOVE;
         
+        // 🟢 Użycie connectObject do wszystkich sygnałów z Main.panel!
         const sr = Main.panel.statusArea.screenRecording;
-        if (sr) host._signalIds.push([sr, sr.connect('notify::visible', syncRec)]);
+        if (sr) sr.connectObject('notify::visible', syncRec, box);
 
         const shareInd = Main.panel.statusArea.screenSharing;
-        if (shareInd) host._signalIds.push([shareInd, shareInd.connect('notify::visible', syncShare)]);
+        if (shareInd) shareInd.connectObject('notify::visible', syncShare, box);
 
         const bgAppsInd = Main.panel.statusArea.backgroundApps;
-        if (bgAppsInd) host._signalIds.push([bgAppsInd, bgAppsInd.connect('notify::visible', syncBgApps)]);
+        if (bgAppsInd) bgAppsInd.connectObject('notify::visible', syncBgApps, box);
         
         const kbd = Main.panel.statusArea.keyboard;
-        if (kbd) host._signalIds.push([kbd, kbd.connect('notify::visible', syncKbd)]);
+        if (kbd) kbd.connectObject('notify::visible', syncKbd, box);
         
         proxies.forEach(p => {
             const ind = Main.panel.statusArea[p.id];
-            if (ind) host._signalIds.push([ind, ind.connect('notify::visible', p.sync)]);
+            if (ind) ind.connectObject('notify::visible', p.sync, box);
             p.sync();
         });
         
-        syncRec(); 
-        syncShare();
-        syncBgApps();
-        syncKbd(); 
+        syncRec(); syncShare(); syncBgApps(); syncKbd(); 
         return GLib.SOURCE_REMOVE;
     });
 
     host._extraStatusCleanup = () => { 
         if (recTimerId) { GLib.source_remove(recTimerId); recTimerId = 0; }
-        if (kbdSourceSignal && isKbdTimeout) { GLib.source_remove(kbdSourceSignal); kbdSourceSignal = 0; }
+        if (box._kbdFallbackId) { GLib.source_remove(box._kbdFallbackId); box._kbdFallbackId = 0; }
     };
 
     return box;

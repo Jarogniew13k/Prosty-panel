@@ -1,4 +1,4 @@
-// Prosty Panel — floatpanel.js
+// Prosty Panel — floatpanel.js (Bez monkey-patchingu, dynamiczne skalowanie)
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -29,8 +29,7 @@ export class FloatPanel {
         
         this._checkDebounceId = 0;
         this._newWinRecheckId = 0;
-        this._staticSignals = [];
-        this._trackedWindows = new Map();
+        this._trackedWindows = new Set();
     }
 
     enable() {
@@ -72,11 +71,8 @@ export class FloatPanel {
         this._bar.visible = true;
         this._bar.translation_y = 0;
 
-        if (this._autoHide) {
-            this._enableIntellihide();
-        } else {
-            this._enableStaticTracker();
-        }
+        if (this._autoHide) this._enableIntellihide();
+        else this._enableStaticTracker();
     }
 
     disable() {
@@ -89,7 +85,7 @@ export class FloatPanel {
         if (this._dummyStrut) { Main.layoutManager.removeChrome(this._dummyStrut); this._dummyStrut.destroy(); this._dummyStrut = null; }
         
         if (this._bar) { 
-            if (typeof this._bar._cleanup === 'function') this._bar._cleanup(); // 🟢
+            if (typeof this._bar._cleanup === 'function') this._bar._cleanup();
             Main.layoutManager.removeChrome(this._bar); 
             this._bar.destroy(); 
             this._bar = null;
@@ -100,18 +96,22 @@ export class FloatPanel {
     }
 
     _enableStaticTracker() {
-        const bind = (obj, sig, cb) => {
-            const id = obj.connect(sig, cb);
-            this._staticSignals.push({ obj, id });
-        };
-
-        bind(Main.overview, 'showing', () => this._queueFullscreenCheck());
-        bind(Main.overview, 'hidden', () => this._queueFullscreenCheck());
-        bind(global.display, 'notify::focus-window', () => { this._rebuildTrackedWindows(); this._queueFullscreenCheck(); });
-        bind(global.display, 'window-created', (_dpy, win) => { this._onWindowCreated(win); });
-        bind(global.display, 'restacked', () => this._queueFullscreenCheck());
-        bind(global.window_manager, 'switch-workspace', () => { this._rebuildTrackedWindows(); this._queueFullscreenCheck(); });
-        bind(global.window_manager, 'map', () => { this._rebuildTrackedWindows(); this._queueFullscreenCheck(); });
+        Main.overview.connectObject(
+            'showing', () => this._queueFullscreenCheck(),
+            'hidden', () => this._queueFullscreenCheck(),
+            this._bar
+        );
+        global.display.connectObject(
+            'notify::focus-window', () => { this._rebuildTrackedWindows(); this._queueFullscreenCheck(); },
+            'window-created', (_dpy, win) => this._onWindowCreated(win),
+            'restacked', () => this._queueFullscreenCheck(),
+            this._bar
+        );
+        global.window_manager.connectObject(
+            'switch-workspace', () => { this._rebuildTrackedWindows(); this._queueFullscreenCheck(); },
+            'map', () => { this._rebuildTrackedWindows(); this._queueFullscreenCheck(); },
+            this._bar
+        );
 
         this._rebuildTrackedWindows();
         this._queueFullscreenCheck();
@@ -121,8 +121,11 @@ export class FloatPanel {
         if (this._newWinRecheckId) { GLib.source_remove(this._newWinRecheckId); this._newWinRecheckId = 0; }
         if (this._checkDebounceId) { GLib.source_remove(this._checkDebounceId); this._checkDebounceId = 0; }
         
-        for (const sig of this._staticSignals) { try { sig.obj.disconnect(sig.id); } catch(e) {} }
-        this._staticSignals = [];
+        if (this._bar) {
+            Main.overview.disconnectObject(this._bar);
+            global.display.disconnectObject(this._bar);
+            global.window_manager.disconnectObject(this._bar);
+        }
         this._clearAllTrackedWindows();
     }
 
@@ -130,9 +133,9 @@ export class FloatPanel {
         const ws = global.workspace_manager.get_active_workspace();
         const current = new Set(ws.list_windows());
 
-        for (const [win, ids] of this._trackedWindows) {
+        for (const win of this._trackedWindows) {
             if (!current.has(win)) {
-                this._untrackWindow(win, ids);
+                this._untrackWindow(win);
                 this._trackedWindows.delete(win);
             }
         }
@@ -143,27 +146,32 @@ export class FloatPanel {
 
     _trackWindow(win) {
         const cb = () => this._queueFullscreenCheck();
-        const ids = [];
-        const signals = [ 'size-changed', 'position-changed', 'notify::fullscreen', 'notify::maximized-horizontally', 'notify::maximized-vertically', 'notify::minimized' ];
-        for (const sig of signals) { try { ids.push(win.connect(sig, cb)); } catch(e) {} }
+        
+        win.connectObject(
+            'size-changed', cb,
+            'position-changed', cb,
+            'notify::fullscreen', cb,
+            'notify::maximized-horizontally', cb,
+            'notify::maximized-vertically', cb,
+            'notify::minimized', cb,
+            this._bar
+        );
 
-        const unmanagedId = win.connect('unmanaged', () => {
+        win.connectObject('unmanaged', () => {
             this._untrackWindow(win);
             this._trackedWindows.delete(win);
             this._queueFullscreenCheck();
-        });
-        ids.push(unmanagedId);
+        }, this._bar);
 
-        this._trackedWindows.set(win, ids);
+        this._trackedWindows.add(win);
     }
 
-    _untrackWindow(win, ids) {
-        if (!ids) ids = this._trackedWindows.get(win) || [];
-        for (const id of ids) { try { win.disconnect(id); } catch(e) {} }
+    _untrackWindow(win) {
+        if (this._bar) win.disconnectObject(this._bar);
     }
 
     _clearAllTrackedWindows() {
-        for (const [win, ids] of this._trackedWindows) { this._untrackWindow(win, ids); }
+        for (const win of this._trackedWindows) this._untrackWindow(win);
         this._trackedWindows.clear();
     }
 
@@ -278,22 +286,27 @@ export class FloatPanel {
         }
     }
 
-    // 🟢 Przezroczystość dla tacy
     _hideTopPanel() {
         Main.panel.opacity = 0; 
         Main.layoutManager.panelBox.opacity = 0;
-        Main.layoutManager.panelBox.translation_y = -200;
+        
+        // 🟢 FIX: Dynamiczna wysokość
+        const panelHeight = Main.layoutManager.panelBox.height || 40;
+        Main.layoutManager.panelBox.translation_y = -panelHeight;
+        
         let idx = Main.layoutManager._findActor(Main.layoutManager.panelBox);
         if (idx >= 0) {
             this._oldAffectsStruts = Main.layoutManager._trackedActors[idx].affectsStruts;
             Main.layoutManager._trackedActors[idx].affectsStruts = false;
             Main.layoutManager._queueUpdateRegions();
         }
+        
+        // 🟢 FIX: Bezpieczne ukrywanie Dasha
         if (Main.overview?.dash) {
-            this._dashOrigVisible = Main.overview.dash.visible;
-            this._dashOrigShow = Main.overview.dash.show;
-            Main.overview.dash.show = function() {};
-            Main.overview.dash.hide();
+            this._dashOrigOpacity = Main.overview.dash.opacity;
+            this._dashOrigReactive = Main.overview.dash.reactive;
+            Main.overview.dash.opacity = 0;
+            Main.overview.dash.reactive = false;
         }
     }
 
@@ -301,17 +314,19 @@ export class FloatPanel {
         Main.panel.opacity = 255; 
         Main.layoutManager.panelBox.opacity = 255;
         Main.layoutManager.panelBox.translation_y = 0;
+        
         if (this._oldAffectsStruts !== undefined) {
             let idx = Main.layoutManager._findActor(Main.layoutManager.panelBox);
             if (idx >= 0) Main.layoutManager._trackedActors[idx].affectsStruts = this._oldAffectsStruts;
             this._oldAffectsStruts = undefined;
             Main.layoutManager._queueUpdateRegions();
         }
-        if (Main.overview?.dash && this._dashOrigShow !== undefined) {
-            Main.overview.dash.show = this._dashOrigShow;
-            Main.overview.dash.visible = this._dashOrigVisible;
-            this._dashOrigShow = undefined;
-            this._dashOrigVisible = undefined;
+        
+        if (Main.overview?.dash) {
+            if (this._dashOrigOpacity !== undefined) Main.overview.dash.opacity = this._dashOrigOpacity;
+            if (this._dashOrigReactive !== undefined) Main.overview.dash.reactive = this._dashOrigReactive;
+            this._dashOrigOpacity = undefined;
+            this._dashOrigReactive = undefined;
         }
     }
 

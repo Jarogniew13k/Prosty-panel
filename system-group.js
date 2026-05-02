@@ -1,4 +1,4 @@
-// Prosty Panel — system-group.js (Rygorystyczna obsługa ukrytych ikon)
+// Prosty Panel — system-group.js (GNOME 45+ Ready, connectObject & Failsafe API)
 
 import St      from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -49,7 +49,12 @@ export function buildSystemGroup(host) {
 
         const findIndicatorIcons = () => {
             const result = { vol: [], net: [], vpn: [], bt: [], bat: [] };
-            if (!qs._indicators) return result;
+            
+            // 🟢 FAILSAFE: Ochrona przed zmianą prywatnego API w GNOME 49+
+            if (typeof qs._indicators === 'undefined') {
+                console.warn('[Prosty Panel] OSTRZEŻENIE: API GNOME uległo zmianie (brak quickSettings._indicators)! Grupa sprzętowa może nie działać.');
+                return result;
+            }
 
             const walk = (actor) => {
                 if (actor instanceof St.Icon) {
@@ -79,7 +84,6 @@ export function buildSystemGroup(host) {
         };
 
         const isIconTrulyVisible = (ico) => {
-            // 🟢 Rygorystyczny filtr: Musi być widoczna i fizycznie zajmować miejsce
             return ico && ico.visible && ico.opacity > 0 && ico.get_width() > 0 && !ico.is_destroyed?.();
         };
 
@@ -97,10 +101,15 @@ export function buildSystemGroup(host) {
             };
 
             update();
-            host._signalIds.push([srcIcon, srcIcon.connect('notify::icon-name', update)]);
-            host._signalIds.push([srcIcon, srcIcon.connect('notify::gicon', update)]);
-            host._signalIds.push([srcIcon, srcIcon.connect('notify::visible', update)]);
-            host._signalIds.push([srcIcon, srcIcon.connect('notify::opacity', update)]);
+            
+            // 🟢 NOWOCZESNE ZARZĄDZANIE PAMIĘCIĄ: connectObject odpina się samoistnie, gdy sysGroup zostanie zniszczone
+            srcIcon.connectObject(
+                'notify::icon-name', update,
+                'notify::gicon', update,
+                'notify::visible', update,
+                'notify::opacity', update,
+                sysGroup
+            );
         };
 
         host._sysBindIdleId = GLib.idle_add(GLib.PRIORITY_LOW, () => {
@@ -113,7 +122,6 @@ export function buildSystemGroup(host) {
                 const updateNetworkIcon = () => {
                     let activeIcon = null;
                     
-                    // Najpierw szukamy trybu samolotowego, ALE tylko jeśli jest w pełni widoczny
                     for (const netIcon of found.net) {
                         let n = netIcon.icon_name || '';
                         if (!n && netIcon.gicon && typeof netIcon.gicon.get_names === 'function') {
@@ -126,7 +134,6 @@ export function buildSystemGroup(host) {
                         }
                     }
                     
-                    // Jeśli samolotu nie ma, bierzemy pierwszą widoczną sieć
                     if (!activeIcon) {
                         for (const netIcon of found.net) {
                             if (isIconTrulyVisible(netIcon)) {
@@ -146,10 +153,14 @@ export function buildSystemGroup(host) {
 
                 updateNetworkIcon();
                 found.net.forEach(icon => {
-                    host._signalIds.push([icon, icon.connect('notify::visible', updateNetworkIcon)]);
-                    host._signalIds.push([icon, icon.connect('notify::gicon', updateNetworkIcon)]);
-                    host._signalIds.push([icon, icon.connect('notify::icon-name', updateNetworkIcon)]);
-                    host._signalIds.push([icon, icon.connect('notify::opacity', updateNetworkIcon)]);
+                    // 🟢 ConnectObject zamiast ręcznej tablicy
+                    icon.connectObject(
+                        'notify::visible', updateNetworkIcon,
+                        'notify::gicon', updateNetworkIcon,
+                        'notify::icon-name', updateNetworkIcon,
+                        'notify::opacity', updateNetworkIcon,
+                        sysGroup
+                    );
                 });
             }
             

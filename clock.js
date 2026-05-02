@@ -1,4 +1,4 @@
-// Prosty Panel — clock.js (Wykorzystanie GnomeDesktop.WallClock)
+// Prosty Panel — clock.js (GNOME 45+ Ready, connectObject)
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -40,8 +40,6 @@ export function buildClock(host) {
     });
 
     let wallClock = null;
-    let clockSignalId = 0;
-    let sourceSignals = new Map(); 
 
     const updateClock = () => {
         if (host._panelDestroyed) return;
@@ -53,22 +51,24 @@ export function buildClock(host) {
     const startClock = () => {
         if (!wallClock) {
             wallClock = new GnomeDesktop.WallClock();
-            clockSignalId = wallClock.connect('notify::clock', updateClock);
-            host._signalIds.push([wallClock, clockSignalId]);
+            // 🟢 Połączenie żywotności sygnału czasu z przyciskiem clock
+            wallClock.connectObject('notify::clock', updateClock, clock);
         }
         updateClock();
     };
 
     const stopClock = () => {
-        if (wallClock && clockSignalId) {
-            try { wallClock.disconnect(clockSignalId); } catch(e) {}
-            clockSignalId = 0;
+        if (wallClock) {
+            wallClock.disconnectObject(clock);
+            wallClock = null;
         }
-        wallClock = null;
-        for (const [src, id] of sourceSignals.entries()) {
-            try { src.disconnect(id); } catch(e) {}
+        const tray = Main.messageTray;
+        if (tray) {
+            tray.disconnectObject(clock);
+            tray.getSources().forEach(src => {
+                try { src.disconnectObject(clock); } catch(e) {}
+            });
         }
-        sourceSignals.clear();
     };
 
     const bindNotifications = () => {
@@ -83,23 +83,17 @@ export function buildClock(host) {
         };
 
         const onSourceAdded = (t, src) => {
-            if (sourceSignals.has(src)) return;
-            const id = src.connect('notify::count', updateDot);
-            sourceSignals.set(src, id);
+            // 🟢 Czyste połączenie. Zniknie, gdy zniknie clock lub gdy source zostanie usunięte
+            src.connectObject('notify::count', updateDot, clock);
             updateDot();
         };
 
-        const onSourceRemoved = (t, src) => {
-            if (sourceSignals.has(src)) {
-                try { src.disconnect(sourceSignals.get(src)); } catch(e) {}
-                sourceSignals.delete(src);
-            }
-            updateDot();
-        };
-
-        host._signalIds.push([tray, tray.connect('source-added', onSourceAdded)]);
-        host._signalIds.push([tray, tray.connect('source-removed', onSourceRemoved)]);
-        host._signalIds.push([tray, tray.connect('queue-changed', updateDot)]);
+        tray.connectObject(
+            'source-added', onSourceAdded,
+            'source-removed', (t, src) => { src.disconnectObject(clock); updateDot(); },
+            'queue-changed', updateDot,
+            clock
+        );
 
         tray.getSources().forEach(src => onSourceAdded(null, src));
         updateDot();
