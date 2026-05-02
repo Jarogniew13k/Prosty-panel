@@ -1,4 +1,4 @@
-// Prosty Panel — tray-popup.js (v2.2 GNOME 49 Ready)
+// Prosty Panel — tray-popup.js (Poprawka dla opóźnień z DBus Menu)
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -43,7 +43,7 @@ export function buildTrayArrow(host) {
 
     const box = new St.BoxLayout({
         style_class: 'tb-tray-popup-box',
-        reactive: true, // wymagane w nowszym API GNOME
+        reactive: true,
         y_align: Clutter.ActorAlign.CENTER,
     });
     popup.set_child(box);
@@ -142,7 +142,8 @@ export function buildTrayArrow(host) {
         }
 
         if (!icon) {
-            const themed = Gio.ThemedIcon.new_from_names(item.iconNames);
+            const names = (item.iconNames && item.iconNames.length > 0) ? item.iconNames : ['image-missing'];
+            const themed = Gio.ThemedIcon.new_from_names(names);
             icon = new St.Icon({ gicon: themed, icon_size: ICON_SIZE, style_class: 'tb-tray-cell-icon' });
         }
 
@@ -169,6 +170,23 @@ export function buildTrayArrow(host) {
                 } else {
                     item.contextMenu(Math.floor(mouseX), Math.floor(mouseY));
                     closeTrayPopup(host);
+                }
+                return Clutter.EVENT_STOP;
+            } else if (btn === 2) {
+                if (item.secondaryActivate) item.secondaryActivate(Math.floor(mouseX), Math.floor(mouseY));
+                closeTrayPopup(host);
+                return Clutter.EVENT_STOP;
+            }
+            return Clutter.EVENT_PROPAGATE;
+        });
+
+        cellBtn.connect('scroll-event', (actor, event) => {
+            if (item.scroll) {
+                const direction = event.get_scroll_direction();
+                if (direction === Clutter.ScrollDirection.UP) {
+                    item.scroll(-1, 'vertical');
+                } else if (direction === Clutter.ScrollDirection.DOWN) {
+                    item.scroll(1, 'vertical');
                 }
                 return Clutter.EVENT_STOP;
             }
@@ -198,18 +216,26 @@ async function _buildAndOpenDBusMenu(item, sourceActor, host, popup) {
         const res = await new Promise((resolve, reject) => {
             item.menuProxy.call(
                 'GetLayout', new GLib.Variant('(iias)', [0, -1, []]),
-                Gio.DBusCallFlags.NONE, -1, null,
+                Gio.DBusCallFlags.NONE, 
+                500, // 🟢 FIX: Skrócenie czasu oczekiwania do zaledwie 500 ms (ułamek sekundy zamiast 25 sekund)!
+                null,
                 (p, r) => {
                     try { resolve(p.call_finish(r)); } catch(e) { reject(e); }
                 }
             );
         });
 
-        // 🔒 Zabezpieczenie przed zniszczeniem panelu/tacy w trakcie oczekiwania
         if (host._panelDestroyed || !popup || !popup.get_parent()) return;
 
         const unpacked = res.deep_unpack();
         const rootChildren = unpacked[1][2];
+
+        if (!rootChildren || rootChildren.length === 0) {
+            closeTrayPopup(host);
+            const [mouseX, mouseY] = sourceActor.get_transformed_position();
+            item.contextMenu(Math.floor(mouseX), Math.floor(mouseY));
+            return;
+        }
 
         const menu = new PopupMenu.PopupMenu(sourceActor, 0.5, St.Side.BOTTOM);
         Main.uiGroup.add_child(menu.actor);
@@ -282,7 +308,8 @@ async function _buildAndOpenDBusMenu(item, sourceActor, host, popup) {
         menu.open(true);
 
     } catch (e) {
-        console.warn('[ProstyPanel:Tray] Error building DBusMenu fallback to contextMenu:', e.message);
+        // Zepsute Electronowe Menu błyskawicznie wejdzie tutaj i poprawnie włączy awaryjne ContextMenu
+        closeTrayPopup(host);
         const [mouseX, mouseY] = sourceActor.get_transformed_position();
         item.contextMenu(Math.floor(mouseX), Math.floor(mouseY));
     }

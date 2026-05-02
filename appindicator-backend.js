@@ -1,4 +1,5 @@
-// Prosty Panel — appindicator-backend.js (v2.2 GNOME 49 Ready)
+// Prosty Panel — appindicator-backend.js 
+// Wersja finalna: Poprawiony D-Bus, bezpieczne usuwanie (Debounce) i naprawiony skaner rozmiarów
 
 import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
@@ -6,16 +7,19 @@ import GLib from 'gi://GLib';
 import Shell from 'gi://Shell';
 import GdkPixbuf from 'gi://GdkPixbuf';
 
-// GNOME 49: promisyfikacja D-Busa, aby uniknąć call_sync
 Gio._promisify(Gio.DBusProxy.prototype, 'call', 'call_finish');
 
 const WATCHER_XML = `
 <node>
   <interface name="org.kde.StatusNotifierWatcher">
     <method name="RegisterStatusNotifierItem"><arg type="s" name="service" direction="in"/></method>
+    <method name="RegisterStatusNotifierHost"><arg type="s" name="service" direction="in"/></method>
     <property name="RegisteredStatusNotifierItems" type="as" access="read"/>
+    <property name="IsStatusNotifierHostRegistered" type="b" access="read"/>
+    <property name="ProtocolVersion" type="i" access="read"/>
     <signal name="StatusNotifierItemRegistered"><arg type="s" name="service"/></signal>
     <signal name="StatusNotifierItemUnregistered"><arg type="s" name="service"/></signal>
+    <signal name="StatusNotifierHostRegistered"><arg type="s" name="service"/></signal>
   </interface>
 </node>`;
 
@@ -32,6 +36,7 @@ const ITEM_XML = `
     <method name="Activate"><arg type="i" name="x"/><arg type="i" name="y"/></method>
     <method name="ContextMenu"><arg type="i" name="x"/><arg type="i" name="y"/></method>
     <method name="SecondaryActivate"><arg type="i" name="x"/><arg type="i" name="y"/></method>
+    <method name="Scroll"><arg type="i" name="delta"/><arg type="s" name="orientation"/></method>
   </interface>
 </node>`;
 
@@ -65,10 +70,11 @@ const safeUnpack = (variant) => {
     return v;
 };
 
+// 🟢 FIX: Dodałem większe rozmiary (512, 256, 128, 96, 64) żeby znajdować ikony Discorda i Heroic!
 function _findIconFile(baseName, searchPaths) {
     if (!baseName) return null;
     const exts = ['.png', '.svg', '.xpm', ''];
-    const sizes = ['scalable', '48x48', '32x32', '24x24', '22x22', '16x16'];
+    const sizes = ['scalable', '512x512', '256x256', '128x128', '96x96', '64x64', '48x48', '32x32', '24x24', '22x22', '16x16'];
     const cats = ['apps', 'status', 'devices'];
 
     for (const dir of searchPaths) {
@@ -97,12 +103,23 @@ function _buildAbsoluteIconPath(iconName, iconThemePath) {
     }
 
     const paths = [];
-    if (iconThemePath) paths.push(iconThemePath);
+
+    if (iconThemePath) {
+        paths.push(iconThemePath);
+        const sizes = ['scalable', '512x512', '256x256', '128x128', '96x96', '64x64', '48x48', '32x32', '24x24', '22x22', '16x16'];
+        const cats  = ['apps', 'status', 'devices'];
+        for (const size of sizes) {
+            for (const cat of cats) {
+                paths.push(`${iconThemePath}/${size}/${cat}`);
+            }
+        }
+    }
+
     paths.push(
-        '/usr/share/pixmaps', 
+        '/usr/share/pixmaps',
         '/usr/local/share/pixmaps',
         `${GLib.get_home_dir()}/.local/share/pixmaps`,
-        '/usr/share/icons/hicolor', 
+        '/usr/share/icons/hicolor',
         '/usr/local/share/icons/hicolor',
         `${GLib.get_home_dir()}/.local/share/icons/hicolor`
     );
@@ -122,24 +139,28 @@ function _createPixbufFromPixmap(pixmapProp) {
 
         const raw = best[2] instanceof Uint8Array ? best[2] : new Uint8Array(best[2]);
 
-        let hasContent = false;
-        for (let i = 0; i < raw.length; i++) {
-            if (raw[i] !== 0) { hasContent = true; break; }
-        }
-        if (!hasContent) return null;
-
         const rgba = new Uint8Array(raw.length);
+        let hasVisiblePixels = false;
         for (let i = 0; i < raw.length; i += 4) {
             rgba[i]     = raw[i + 1]; 
             rgba[i + 1] = raw[i + 2]; 
             rgba[i + 2] = raw[i + 3]; 
             rgba[i + 3] = raw[i];     
+            if (rgba[i + 3] > 0) hasVisiblePixels = true;
         }
 
+        if (!hasVisiblePixels) return null;
+
         const bytes = new GLib.Bytes(rgba);
-        return GdkPixbuf.Pixbuf.new_from_bytes(bytes, GdkPixbuf.Colorspace.RGB, true, 8, best[0], best[1], best[0] * 4);
+        return GdkPixbuf.Pixbuf.new_from_bytes(
+            bytes,
+            GdkPixbuf.Colorspace.RGB,
+            true,   
+            8,      
+            best[0], best[1],
+            best[0] * 4
+        );
     } catch (e) {
-        console.warn('[ProstyPanel:Tray] _createPixbufFromPixmap error:', e.message);
         return null;
     }
 }
@@ -223,6 +244,7 @@ export const TrayBackend = GObject.registerClass({
         super._init();
         this._items = new Map();
         this._refreshTimeouts = new Map();
+        this._unregisterTimeouts = new Map(); // Kontroler usuwania ikon
         this._rawSignals = new Map(); 
         this._dbus = Gio.DBus.session;
         this._initDualMode();
@@ -239,13 +261,29 @@ export const TrayBackend = GObject.registerClass({
                     const items = safeUnpack(itemsVar);
                     if (Array.isArray(items)) for (const service of items) this._registerItem(service);
                 }
-                this._watcherProxy.connectSignal('StatusNotifierItemRegistered', (proxy, sender, params) => { this._registerItem(safeUnpack(params)[0]); });
-                this._watcherProxy.connectSignal('StatusNotifierItemUnregistered', (proxy, sender, params) => { this._unregisterItem(safeUnpack(params)[0]); });
+                
+                // 🟢 FIX: Ochrona przed wyścigiem zdarzeń w Electronie
+                this._watcherProxy.connectSignal('StatusNotifierItemRegistered', (proxy, sender, params) => { 
+                    const service = safeUnpack(params)[0];
+                    // Jeśli chcieliśmy to usunąć, ale jednak wraca - anulujemy usuwanie!
+                    if (this._unregisterTimeouts.has(service)) {
+                        GLib.source_remove(this._unregisterTimeouts.get(service));
+                        this._unregisterTimeouts.delete(service);
+                    }
+                    if (this._items.has(service)) {
+                        this._scheduleIconRefresh(service);
+                    } else {
+                        this._registerItem(service);
+                    }
+                });
+                
+                this._watcherProxy.connectSignal('StatusNotifierItemUnregistered', (proxy, sender, params) => { 
+                    this._requestUnregister(safeUnpack(params)[0], false); // fałsz = poczekaj 500ms
+                });
             } else {
                 this._hostOwnWatcher();
             }
         } catch (e) { 
-            console.warn('[ProstyPanel:Tray] _initDualMode falling back to host own watcher', e.message);
             this._hostOwnWatcher(); 
         }
     }
@@ -258,10 +296,28 @@ export const TrayBackend = GObject.registerClass({
                 if (method === 'RegisterStatusNotifierItem') {
                     let service = String(safeUnpack(params)[0]);
                     if (service.startsWith('/')) service = sender + service;
-                    this._registerItem(service);
+                    
+                    if (this._unregisterTimeouts.has(service)) {
+                        GLib.source_remove(this._unregisterTimeouts.get(service));
+                        this._unregisterTimeouts.delete(service);
+                    }
+                    if (this._items.has(service)) {
+                        this._scheduleIconRefresh(service);
+                    } else {
+                        this._registerItem(service);
+                    }
+                    invocation.return_value(null);
+                } else if (method === 'RegisterStatusNotifierHost') {
                     invocation.return_value(null);
                 }
-            }, () => new GLib.Variant('as', Array.from(this._items.keys())), null
+            }, 
+            (conn, sender, path, iface, prop) => {
+                if (prop === 'RegisteredStatusNotifierItems') return new GLib.Variant('as', Array.from(this._items.keys()));
+                if (prop === 'IsStatusNotifierHostRegistered') return new GLib.Variant('b', true); 
+                if (prop === 'ProtocolVersion') return new GLib.Variant('i', 1);
+                return null;
+            }, 
+            null
         );
         this._ownNameId = Gio.bus_own_name_on_connection(this._dbus, 'org.kde.StatusNotifierWatcher', Gio.BusNameOwnerFlags.REPLACE, null, null);
     }
@@ -279,42 +335,84 @@ export const TrayBackend = GObject.registerClass({
             });
             await proxy.init_async(GLib.PRIORITY_DEFAULT, null);
 
+            // Jeśli program naprawdę umarł w systemie - zabijamy natychmiast
+            const ownerChangedId = proxy.connect('notify::g-name-owner', () => {
+                if (!proxy.g_name_owner) {
+                    this._requestUnregister(service, true); // prawda = usuń natychmiast
+                }
+            });
+
+            const propSignalId = proxy.connect('g-properties-changed', () => {
+                this._scheduleIconRefresh(service);
+            });
+
+            const sigId1 = this._dbus.signal_subscribe(bus, 'org.kde.StatusNotifierItem', 'NewIcon', path, null, Gio.DBusSignalFlags.NONE, () => this._scheduleIconRefresh(service));
+            const sigId2 = this._dbus.signal_subscribe(bus, 'org.kde.StatusNotifierItem', 'NewTitle', path, null, Gio.DBusSignalFlags.NONE, () => this._scheduleIconRefresh(service));
+            
+            this._rawSignals.set(service, { propSignalId, sigId1, sigId2, ownerChangedId });
+
             const itemData = await this._buildItemData(service, proxy, bus);
             if (!itemData) return;
 
-            if (!this._rawSignals.has(service)) {
-                let sigId = this._dbus.signal_subscribe(
-                    bus, 'org.kde.StatusNotifierItem', 'NewIcon', path, null, Gio.DBusSignalFlags.NONE,
-                    () => { this._scheduleIconRefresh(service); }
-                );
-                this._rawSignals.set(service, sigId);
-            }
-
             this._items.set(service, itemData);
             this.emit('item-added', service, itemData);
+            
             this._scheduleIconRefresh(service);
-        } catch (e) {
-            console.warn(`[ProstyPanel:Tray] Failed to register item ${service}:`, e.message);
+        } catch (e) {}
+    }
+
+    // 🟢 FIX: Kontroler Usuwania (Debounce)
+    _requestUnregister(service, immediate = false) {
+        if (immediate) {
+            if (this._unregisterTimeouts.has(service)) {
+                GLib.source_remove(this._unregisterTimeouts.get(service));
+                this._unregisterTimeouts.delete(service);
+            }
+            this._performUnregister(service);
+            return;
+        }
+
+        if (this._unregisterTimeouts.has(service)) return;
+
+        const timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+            this._performUnregister(service);
+            this._unregisterTimeouts.delete(service);
+            return GLib.SOURCE_REMOVE;
+        });
+        this._unregisterTimeouts.set(service, timeoutId);
+    }
+
+    _performUnregister(service) {
+        this._clearRefreshTimeouts(service);
+        const sigs = this._rawSignals.get(service);
+        if (sigs) {
+            const item = this._items.get(service);
+            if (item && item.proxy) {
+                try { item.proxy.disconnect(sigs.propSignalId); } catch(e){}
+                try { item.proxy.disconnect(sigs.ownerChangedId); } catch(e){}
+            }
+            try { this._dbus.signal_unsubscribe(sigs.sigId1); } catch(e){}
+            try { this._dbus.signal_unsubscribe(sigs.sigId2); } catch(e){}
+            this._rawSignals.delete(service);
+        }
+        if (this._items.has(service)) {
+            this._items.delete(service);
+            this.emit('item-removed', service);
         }
     }
 
     _scheduleIconRefresh(service) {
         this._clearRefreshTimeouts(service);
         const timeouts = [];
-
         const createTimeout = (delay) => {
             const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, () => {
-                // Usuń identyfikator z listy, zanim zostanie automatycznie zwolniony
                 this._removeRefreshId(service, id);
-                this._refreshItem(service).catch(e => {
-                    console.warn('[ProstyPanel:Tray] _refreshItem error:', e.message);
-                });
+                this._refreshItem(service).catch(e => {});
                 return GLib.SOURCE_REMOVE;
             });
             timeouts.push(id);
         };
-
-        [2000, 5000, 10000].forEach(delay => createTimeout(delay));
+        [2000, 5000].forEach(delay => createTimeout(delay));
         this._refreshTimeouts.set(service, timeouts);
     }
 
@@ -339,18 +437,28 @@ export const TrayBackend = GObject.registerClass({
         if (!item) return;
         const proxy = item.proxy;
 
-        for (const prop of ['IconName', 'IconPixmap', 'IconThemePath']) {
+        for (const prop of ['IconName', 'IconPixmap', 'IconThemePath', 'Id', 'Title', 'ItemIsMenu', 'Menu']) {
             try {
-                const [value] = await proxy.call(
-                    'org.freedesktop.DBus.Properties', 'Get',
+                const reply = await proxy.get_connection().call(
+                    proxy.g_name,
+                    proxy.g_object_path,
+                    'org.freedesktop.DBus.Properties',
+                    'Get',
                     new GLib.Variant('(ss)', ['org.kde.StatusNotifierItem', prop]),
-                    Gio.DBusCallFlags.NONE, -1, null
+                    null,
+                    Gio.DBusCallFlags.NONE,
+                    1000, 
+                    null
                 );
-                proxy.set_cached_property(prop, value.deep_unpack());
-            } catch (e) {
-                // Ciche ignorowanie – niektóre aplikacje nie mają tych właściwości
-            }
+                
+                if (reply) {
+                    const resultVariant = reply.get_child_value(0);
+                    proxy.set_cached_property(prop, resultVariant.get_variant());
+                }
+            } catch (e) {}
         }
+
+        if (!this._items.has(service)) return;
 
         const iconName      = safeUnpack(proxy.get_cached_property('IconName'));
         const id            = safeUnpack(proxy.get_cached_property('Id'));
@@ -359,6 +467,8 @@ export const TrayBackend = GObject.registerClass({
 
         let absoluteIconPath = _buildAbsoluteIconPath(iconName, iconThemePath);
         if (!absoluteIconPath) absoluteIconPath = await _getDesktopIcon(proxy.g_name);
+        
+        if (!this._items.has(service)) return;
         
         if (!absoluteIconPath && id) {
             absoluteIconPath = _findIconFile(id, [
@@ -379,6 +489,7 @@ export const TrayBackend = GObject.registerClass({
         item.absoluteIconPath = absoluteIconPath;
         item.pixbuf = pixbuf;
         item.iconNames = iconNames;
+        item.title = title || id;
         item.fallbackGIcon = _getAppInfoGIcon(iconName, id, title);
 
         this.emit('item-added', service, item);
@@ -409,18 +520,23 @@ export const TrayBackend = GObject.registerClass({
         let iconNames = [];
         if (iconName) iconNames.push(iconName);
         if (id) { iconNames.push(id); iconNames.push(id.toLowerCase()); }
+        if (iconNames.length === 0) iconNames.push('image-missing');
 
         const fallbackGIcon = _getAppInfoGIcon(iconName, id, title);
 
         let menuProxy = null;
         const menuPath = safeUnpack(proxy.get_cached_property('Menu'));
         if (menuPath && menuPath !== '/') {
-            menuProxy = new Gio.DBusProxy({
-                g_connection: this._dbus, g_interface_name: 'com.canonical.dbusmenu',
-                g_interface_info: Gio.DBusInterfaceInfo.new_for_xml(MENU_XML),
-                g_name: bus, g_object_path: menuPath
-            });
-            await menuProxy.init_async(GLib.PRIORITY_DEFAULT, null);
+            try {
+                menuProxy = new Gio.DBusProxy({
+                    g_connection: this._dbus, g_interface_name: 'com.canonical.dbusmenu',
+                    g_interface_info: Gio.DBusInterfaceInfo.new_for_xml(MENU_XML),
+                    g_name: bus, g_object_path: menuPath
+                });
+                await menuProxy.init_async(GLib.PRIORITY_DEFAULT, null);
+            } catch(e) {
+                menuProxy = null;
+            }
         }
 
         const itemData = {
@@ -428,49 +544,68 @@ export const TrayBackend = GObject.registerClass({
             absoluteIconPath,
             pixbuf,
             iconNames,
+            title: title || id,
             fallbackGIcon,
             itemIsMenu: !!itemIsMenu,
+            
             activate: (x, y) => {
                 const variant = new GLib.Variant('(ii)', [x, y]);
                 try {
                     proxy.call('Activate', variant, Gio.DBusCallFlags.NONE, -1, null, (p, res) => {
                         try { p.call_finish(res); } catch(e) {
                             proxy.call('SecondaryActivate', variant, Gio.DBusCallFlags.NONE, -1, null, (p2, r2) => {
-                                try { p2.call_finish(r2); } catch(e2){ console.warn('[ProstyPanel:Tray] SecondaryActivate failed:', e2.message); }
+                                try { p2.call_finish(r2); } catch(e2){ proxy.call('ContextMenu', variant, Gio.DBusCallFlags.NONE, -1, null, () => {}); }
                             });
                         }
                     });
-                } catch(e) { console.warn('[ProstyPanel:Tray] Activate error:', e.message); }
+                } catch(e) {}
             },
             contextMenu: (x, y) => {
                 const variant = new GLib.Variant('(ii)', [x, y]);
                 try {
                     proxy.call('ContextMenu', variant, Gio.DBusCallFlags.NONE, -1, null, (p, res) => {
-                        try { p.call_finish(res); } catch(e){ console.warn('[ProstyPanel:Tray] ContextMenu failed:', e.message); }
+                        try { p.call_finish(res); } catch(e){ }
                     });
-                } catch(e) { console.warn('[ProstyPanel:Tray] ContextMenu error:', e.message); }
+                } catch(e) { }
+            },
+            secondaryActivate: (x, y) => {
+                const variant = new GLib.Variant('(ii)', [x, y]);
+                try {
+                    proxy.call('SecondaryActivate', variant, Gio.DBusCallFlags.NONE, -1, null, (p, res) => {
+                        try { p.call_finish(res); } catch(e){ }
+                    });
+                } catch(e) { }
+            },
+            scroll: (delta, orientation) => {
+                const variant = new GLib.Variant('(is)', [delta, orientation]);
+                try {
+                    proxy.call('Scroll', variant, Gio.DBusCallFlags.NONE, -1, null, () => {});
+                } catch(e) { }
             }
         };
 
         return itemData;
     }
 
-    _unregisterItem(service) {
-        this._clearRefreshTimeouts(service);
-        if (this._rawSignals.has(service)) {
-            this._dbus.signal_unsubscribe(this._rawSignals.get(service));
-            this._rawSignals.delete(service);
-        }
-        if (this._items.has(service)) {
-            this._items.delete(service);
-            this.emit('item-removed', service);
-        }
-    }
-
     destroy() {
         for (const service of this._items.keys()) this._clearRefreshTimeouts(service);
-        for (const sigId of this._rawSignals.values()) this._dbus.signal_unsubscribe(sigId);
+        
+        for (const [service, sigs] of this._rawSignals.entries()) {
+             const item = this._items.get(service);
+             if (item && item.proxy) {
+                 try { item.proxy.disconnect(sigs.propSignalId); } catch(e){}
+                 try { item.proxy.disconnect(sigs.ownerChangedId); } catch(e){}
+             }
+             try { this._dbus.signal_unsubscribe(sigs.sigId1); } catch(e){}
+             try { this._dbus.signal_unsubscribe(sigs.sigId2); } catch(e){}
+        }
+        
+        for (const timeoutId of this._unregisterTimeouts.values()) {
+            GLib.source_remove(timeoutId);
+        }
+
         this._rawSignals.clear();
+        this._unregisterTimeouts.clear();
 
         if (this._ownNameId) Gio.bus_unown_name(this._ownNameId);
         if (this._regId) this._dbus.unregister_object(this._regId);
