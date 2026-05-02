@@ -1,4 +1,4 @@
-// Prosty Panel — system-group.js (Z osobnym VPN, BT i inteligentnym Trybem Samolotowym)
+// Prosty Panel — system-group.js (Rygorystyczna obsługa ukrytych ikon)
 
 import St      from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -17,15 +17,13 @@ export function buildSystemGroup(host) {
         return { bin, icon };
     };
 
-    // 🟢 Dedykowane komórki
     const volCell  = mkSysCell('audio-volume-high-symbolic');
-    const wifiCell = mkSysCell('network-wireless-signal-good-symbolic'); // Główna komórka dla WiFi/Ethernet/Samolotu
+    const wifiCell = mkSysCell('network-wireless-signal-good-symbolic');
     const vpnCell  = mkSysCell('network-vpn-symbolic');
     const btCell   = mkSysCell('bluetooth-active-symbolic');
     const batCell  = mkSysCell('battery-level-100-symbolic');
     const pwrCell  = mkSysCell('system-shutdown-symbolic');
 
-    // Domyślnie ukrywamy VPN i BT (pojawią się, gdy system je aktywuje)
     vpnCell.bin.visible = false;
     btCell.bin.visible = false;
 
@@ -61,7 +59,6 @@ export function buildSystemGroup(host) {
                         if (names && names.length > 0) n = names[0];
                     }
                     
-                    // 🟢 Dokładna segregacja ikon GNOME
                     if (n.startsWith('audio-volume') || n.startsWith('audio-output') || n === 'audio-headphones-symbolic') {
                         result.vol.push(actor);
                     } else if (n.includes('vpn')) {
@@ -69,7 +66,6 @@ export function buildSystemGroup(host) {
                     } else if (n.startsWith('bluetooth')) {
                         result.bt.push(actor);
                     } else if (n.startsWith('network-') || n.includes('airplane') || n.includes('wireless') || n.includes('wired')) {
-                        // Tutaj łapiemy tryb samolotowy (airplane-mode-symbolic) i inne sieci
                         result.net.push(actor);
                     } else if (n.startsWith('battery-')) {
                         result.bat.push(actor);
@@ -82,6 +78,11 @@ export function buildSystemGroup(host) {
             return result;
         };
 
+        const isIconTrulyVisible = (ico) => {
+            // 🟢 Rygorystyczny filtr: Musi być widoczna i fizycznie zajmować miejsce
+            return ico && ico.visible && ico.opacity > 0 && ico.get_width() > 0 && !ico.is_destroyed?.();
+        };
+
         const sync = (srcIcon, ourIcon, fallback, binActor = null) => {
             const update = () => {
                 try {
@@ -90,7 +91,7 @@ export function buildSystemGroup(host) {
                     else ourIcon.set_icon_name(fallback);
                     
                     if (binActor) {
-                        binActor.visible = srcIcon.visible && srcIcon.opacity > 0;
+                        binActor.visible = isIconTrulyVisible(srcIcon);
                     }
                 } catch (e) { ourIcon.set_icon_name(fallback); }
             };
@@ -108,43 +109,39 @@ export function buildSystemGroup(host) {
             
             if (found.vol[0]) { sync(found.vol[0], volCell.icon, 'audio-volume-muted-symbolic'); volSrcIcon = found.vol[0]; }
             
-            // 🟢 Inteligentny wybór: Samolot czy Wi-Fi?
             if (found.net.length > 0) {
-                let netIconToSync = found.net[0];
-                
-                // Szukamy ikony samolotu, jeśli w systemie widnieje kilka ikon sieci
-                for (const netIcon of found.net) {
-                    let n = netIcon.icon_name || '';
-                    if (!n && netIcon.gicon && typeof netIcon.gicon.get_names === 'function') {
-                        const names = netIcon.gicon.get_names();
-                        if (names && names.length > 0) n = names[0];
-                    }
-                    if (n.includes('airplane') && netIcon.visible) {
-                        netIconToSync = netIcon;
-                        break;
-                    }
-                }
-                
-                // Nasłuchujemy zmiany widoczności wszystkich ikon sieci, by na bieżąco reagować na włączenie samolotu
                 const updateNetworkIcon = () => {
-                    let activeIcon = found.net[0];
+                    let activeIcon = null;
+                    
+                    // Najpierw szukamy trybu samolotowego, ALE tylko jeśli jest w pełni widoczny
                     for (const netIcon of found.net) {
                         let n = netIcon.icon_name || '';
                         if (!n && netIcon.gicon && typeof netIcon.gicon.get_names === 'function') {
                             const names = netIcon.gicon.get_names();
                             if (names && names.length > 0) n = names[0];
                         }
-                        if (n.includes('airplane') && netIcon.visible) {
+                        if (n.includes('airplane') && isIconTrulyVisible(netIcon)) {
                             activeIcon = netIcon;
                             break;
-                        } else if (netIcon.visible) {
-                            activeIcon = netIcon;
                         }
                     }
-                    try {
-                        if (activeIcon.gicon) wifiCell.icon.set_gicon(activeIcon.gicon);
-                        else if (activeIcon.icon_name) wifiCell.icon.set_icon_name(activeIcon.icon_name);
-                    } catch(e){}
+                    
+                    // Jeśli samolotu nie ma, bierzemy pierwszą widoczną sieć
+                    if (!activeIcon) {
+                        for (const netIcon of found.net) {
+                            if (isIconTrulyVisible(netIcon)) {
+                                activeIcon = netIcon;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (activeIcon) {
+                        try {
+                            if (activeIcon.gicon) wifiCell.icon.set_gicon(activeIcon.gicon);
+                            else if (activeIcon.icon_name) wifiCell.icon.set_icon_name(activeIcon.icon_name);
+                        } catch(e){}
+                    }
                 };
 
                 updateNetworkIcon();
@@ -152,23 +149,18 @@ export function buildSystemGroup(host) {
                     host._signalIds.push([icon, icon.connect('notify::visible', updateNetworkIcon)]);
                     host._signalIds.push([icon, icon.connect('notify::gicon', updateNetworkIcon)]);
                     host._signalIds.push([icon, icon.connect('notify::icon-name', updateNetworkIcon)]);
+                    host._signalIds.push([icon, icon.connect('notify::opacity', updateNetworkIcon)]);
                 });
             }
             
-            // Synchronizacja VPN
-            if (found.vpn[0]) {
-                sync(found.vpn[0], vpnCell.icon, 'network-vpn-symbolic', vpnCell.bin);
-            } else vpnCell.bin.visible = false;
+            if (found.vpn[0]) sync(found.vpn[0], vpnCell.icon, 'network-vpn-symbolic', vpnCell.bin);
+            else vpnCell.bin.visible = false;
             
-            // Synchronizacja Bluetooth
-            if (found.bt[0]) {
-                sync(found.bt[0], btCell.icon, 'bluetooth-active-symbolic', btCell.bin);
-            } else btCell.bin.visible = false;
+            if (found.bt[0]) sync(found.bt[0], btCell.icon, 'bluetooth-active-symbolic', btCell.bin);
+            else btCell.bin.visible = false;
 
-            // Synchronizacja Baterii
-            if (found.bat[0]) {
-                sync(found.bat[0], batCell.icon, 'battery-missing-symbolic', batCell.bin);
-            } else batCell.bin.visible = false;
+            if (found.bat[0]) sync(found.bat[0], batCell.icon, 'battery-missing-symbolic', batCell.bin);
+            else batCell.bin.visible = false;
             
             host._sysBindIdleId = 0; return GLib.SOURCE_REMOVE;
         });

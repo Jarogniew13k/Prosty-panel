@@ -1,4 +1,4 @@
-// Prosty Panel — extra-status.js (Wersja z udostępnianiem ekranu i ułatwieniami dostępu)
+// Prosty Panel — extra-status.js (Wydzielone wskaźniki specjalne i pastylki)
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -14,7 +14,9 @@ export function buildExtraStatus(host) {
         style: 'spacing: 4px;'
     });
 
-    // 1. NAGRYWANIE EKRANU (Pill)
+    // ==========================================
+    // 1. NAGRYWANIE EKRANU (Czerwona Pastylka)
+    // ==========================================
     const recBtn = new St.Button({
         style_class: 'tb-rec-pill',
         reactive: true,
@@ -36,7 +38,48 @@ export function buildExtraStatus(host) {
         }
     });
 
-    // 2. KLAWIATURA
+    // ==========================================
+    // 2. UDOSTĘPNIANIE EKRANU (Pomarańczowa Pastylka)
+    // ==========================================
+    const shareBtn = new St.Button({
+        style_class: 'tb-rec-pill tb-share-btn', // Korzysta z kształtu pastylki i animacji pulsowania
+        reactive: true,
+        can_focus: true,
+        visible: false,
+        y_align: Clutter.ActorAlign.CENTER,
+        style: 'background-color: #e66100;' // Wymuszenie pomarańczowego ostrzeżenia
+    });
+    const shareBox = new St.BoxLayout({ y_align: Clutter.ActorAlign.CENTER, style: 'spacing: 6px;' });
+    const shareIcon = new St.Icon({ icon_name: 'camera-web-symbolic', icon_size: 14, style: 'color: #ffffff;' });
+    const shareLabel = new St.Label({ style_class: 'tb-rec-label', y_align: Clutter.ActorAlign.CENTER, text: 'Udostępnianie' });
+    shareBox.add_child(shareIcon); shareBox.add_child(shareLabel); shareBtn.set_child(shareBox);
+
+    shareBtn.connect('clicked', () => {
+        const indicator = Main.panel.statusArea.screenSharing;
+        if (indicator && indicator.menu) openMenuAboveBar(indicator.menu, shareBtn, 4, null, true);
+    });
+
+    // ==========================================
+    // 3. APLIKACJE W TLE (Niezależny przycisk)
+    // ==========================================
+    const bgAppsBtn = new St.Button({
+        style_class: 'tb-btn',
+        reactive: true,
+        can_focus: true,
+        visible: false,
+        y_align: Clutter.ActorAlign.CENTER,
+    });
+    const bgAppsIcon = new St.Icon({ icon_name: 'system-run-symbolic', icon_size: 16, style_class: 'tb-btn-icon' });
+    bgAppsBtn.set_child(bgAppsIcon);
+
+    bgAppsBtn.connect('clicked', () => {
+        const indicator = Main.panel.statusArea.backgroundApps;
+        if (indicator && indicator.menu) openMenuAboveBar(indicator.menu, bgAppsBtn, 4, null, true);
+    });
+
+    // ==========================================
+    // 4. KLAWIATURA
+    // ==========================================
     const kbdBtn = new St.Button({
         style_class: 'tb-btn tb-kbd-btn',
         reactive: true,
@@ -52,9 +95,13 @@ export function buildExtraStatus(host) {
         if (kbd && kbd.menu) openMenuAboveBar(kbd.menu, kbdBtn, 4, null, true);
     });
 
-    // 3. GENERYCZNE WSKAŹNIKI GNOME (ScreenSharing, A11y, DwellClick)
+    // ==========================================
+    // 5. POZOSTAŁE GENERYCZNE WSKAŹNIKI
+    // ==========================================
     const proxies = [
-        { id: 'screenSharing', fallback: 'camera-web-symbolic', color: '#ff7800' }, // Pomarańczowy dla ostrzeżenia prywatności
+        { id: 'camera', fallback: 'camera-web-symbolic', color: '#ff7800' }, // Ostrzeżenie: Kamera
+        { id: 'microphone', fallback: 'audio-input-microphone-symbolic', color: '#ff7800' }, // Ostrzeżenie: Mikrofon
+        { id: 'location', fallback: 'location-services-active-symbolic', color: '#3584e4' }, // Informacja: GPS
         { id: 'a11y', fallback: 'preferences-desktop-accessibility-symbolic', color: null },
         { id: 'dwellClick', fallback: 'pointer-drag-symbolic', color: null }
     ].map(config => {
@@ -71,9 +118,7 @@ export function buildExtraStatus(host) {
             style_class: 'tb-btn-icon'
         });
         
-        // Jeśli wskaźnik wymaga specjalnego koloru ostrzegawczego
         if (config.color) icon.style = `color: ${config.color};`;
-        
         btn.set_child(icon);
 
         btn.connect('clicked', () => {
@@ -90,10 +135,8 @@ export function buildExtraStatus(host) {
                 btn.visible = false;
                 return;
             }
-            
             btn.visible = indicator.visible;
             
-            // Klonowanie dokładnej ikony z natywnego wskaźnika GNOME
             if (indicator.visible) {
                 let foundIcon = null;
                 const walk = (actor) => {
@@ -116,15 +159,18 @@ export function buildExtraStatus(host) {
         return { btn, sync, id: config.id };
     });
 
-    // BUDOWANIE STRUKTURY
-    box.add_child(recBtn);                             // Czerwona pastylka nagrywania (najbardziej po lewej)
-    proxies.forEach(p => box.add_child(p.btn));        // Udostępnianie, A11y, DwellClick
-    box.add_child(kbdBtn);                             // Układ klawiatury (najbliżej tacy systemowej)
+    // BUDOWANIE STRUKTURY WIDOKU
+    box.add_child(recBtn);                             // Nagrywanie
+    box.add_child(shareBtn);                           // Udostępnianie
+    box.add_child(bgAppsBtn);                          // Aplikacje w tle
+    proxies.forEach(p => box.add_child(p.btn));        // Kamera, Mikrofon, GPS
+    box.add_child(kbdBtn);                             // Klawiatura
 
     let kbdSourceSignal = 0;
     let recTimerId = 0;
     let isKbdTimeout = false; 
 
+    // Synchronizacje (Nagrywanie)
     const syncRec = () => {
         if (host._panelDestroyed) return;
         const sr = Main.panel.statusArea.screenRecording;
@@ -153,6 +199,21 @@ export function buildExtraStatus(host) {
         }
     };
 
+    // Synchronizacja (Udostępnianie Ekranu)
+    const syncShare = () => {
+        if (host._panelDestroyed) return;
+        const ind = Main.panel.statusArea.screenSharing;
+        shareBtn.visible = ind ? ind.visible : false;
+    };
+
+    // Synchronizacja (Aplikacje w tle)
+    const syncBgApps = () => {
+        if (host._panelDestroyed) return;
+        const ind = Main.panel.statusArea.backgroundApps;
+        bgAppsBtn.visible = ind ? ind.visible : false;
+    };
+
+    // Synchronizacja (Klawiatura)
     const syncKbd = () => {
         if (host._panelDestroyed) return;
         const kbd = Main.panel.statusArea.keyboard;
@@ -189,16 +250,22 @@ export function buildExtraStatus(host) {
         }
     };
 
+    // Inicjalizacja nasłuchu na zdarzenia systemowe GNOME
     GLib.idle_add(GLib.PRIORITY_LOW, () => {
         if (host._panelDestroyed) return GLib.SOURCE_REMOVE;
         
         const sr = Main.panel.statusArea.screenRecording;
         if (sr) host._signalIds.push([sr, sr.connect('notify::visible', syncRec)]);
+
+        const shareInd = Main.panel.statusArea.screenSharing;
+        if (shareInd) host._signalIds.push([shareInd, shareInd.connect('notify::visible', syncShare)]);
+
+        const bgAppsInd = Main.panel.statusArea.backgroundApps;
+        if (bgAppsInd) host._signalIds.push([bgAppsInd, bgAppsInd.connect('notify::visible', syncBgApps)]);
         
         const kbd = Main.panel.statusArea.keyboard;
         if (kbd) host._signalIds.push([kbd, kbd.connect('notify::visible', syncKbd)]);
         
-        // Podpięcie nowych wskaźników
         proxies.forEach(p => {
             const ind = Main.panel.statusArea[p.id];
             if (ind) host._signalIds.push([ind, ind.connect('notify::visible', p.sync)]);
@@ -206,6 +273,8 @@ export function buildExtraStatus(host) {
         });
         
         syncRec(); 
+        syncShare();
+        syncBgApps();
         syncKbd(); 
         return GLib.SOURCE_REMOVE;
     });

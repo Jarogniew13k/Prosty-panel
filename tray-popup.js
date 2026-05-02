@@ -1,4 +1,4 @@
-// Prosty Panel — tray-popup.js (Hybrydowa wersja: St.Icon + Clutter.Clone Fallback)
+// Prosty Panel — tray-popup.js (Ostateczny Skaner sygnałowy bez błędów "already disposed")
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -38,20 +38,33 @@ function findTrayIndicators() {
     for (const key in statusArea) {
         if (!key.startsWith('appindicator-')) continue;
         const btn = statusArea[key];
+        
         if (!btn) continue;
+
+        try {
+            if (!btn.visible || btn.opacity === 0 || btn.get_width() === 0 || btn.get_parent() === null) continue;
+        } catch(e) { continue; } // Omijamy bezpiecznie uśmiercone w tle obiekty
         
         let icon = null;
         const walk = (a) => {
             if (icon) return;
-            if (!a.visible) return; 
-            
-            if (a instanceof St.Icon) { 
-                icon = a; 
-                return; 
-            }
-            if (typeof a.get_children === 'function') {
-                for (const c of a.get_children()) walk(c);
-            }
+            try {
+                if (!a || !a.visible || a.opacity === 0 || a.get_width() === 0) return; 
+                
+                if (a instanceof St.Icon) { 
+                    // 🟢 FIX: Odrzucamy systemową ikonę awaryjną (Ghosta), która pojawia się przy restartach Discorda!
+                    if (a.icon_name === 'image-loading-symbolic' && !a.gicon) {
+                        return; 
+                    }
+                    if (a.gicon || a.icon_name) {
+                         icon = a; 
+                    }
+                    return; 
+                }
+                if (typeof a.get_children === 'function') {
+                    for (const c of a.get_children()) walk(c);
+                }
+            } catch(e) {}
         };
         walk(btn);
         
@@ -86,6 +99,8 @@ function toggleTrayPopup(host, sourceButton) {
         y_align: Clutter.ActorAlign.CENTER,
     });
 
+    const renderedItems = [];
+
     if (items.length === 0) {
         const lbl = new St.Label({
             text: 'Brak ukrytych ikon',
@@ -95,47 +110,66 @@ function toggleTrayPopup(host, sourceButton) {
         box.add_child(lbl);
     } else {
         for (const { button, icon } of items) {
+            
+            let itemState = { dead: false, cellBtn: null };
+
+            // 🟢 ZABEZPIECZENIE: Podpinamy natywne sygnały niszczenia, które automatycznie ustawiają flagę "dead"
+            // bez wywoływania niebezpiecznych funkcji .is_destroyed() na umierających obiektach C++.
+            try {
+                button.connectObject('destroy', () => { itemState.dead = true; }, popup);
+                icon.connectObject('destroy', () => { itemState.dead = true; }, popup);
+            } catch(e) { continue; } // Jeśli padło w ułamku sekundy, pomijamy element
+
             const cellBtn = new St.Button({
                 style_class: 'tb-tray-cell',
                 reactive: true,
                 can_focus: true,
                 track_hover: true,
-                // Blokujemy rozciąganie przycisku przez layout
                 x_expand: false,
                 y_expand: false,
                 width: 32,
                 height: 32,
             });
 
+            itemState.cellBtn = cellBtn;
             let displayIcon;
 
-            // 🟢 PODEJŚCIE HYBRYDOWE
-            if (icon.gicon || icon.icon_name) {
-                // Jeśli ikona ma tożsamość, tworzymy nowy St.Icon z twardą blokadą rozmiaru
-                displayIcon = new St.Icon({
-                    icon_size: 16,
-                    gicon: icon.gicon,
-                    icon_name: icon.icon_name,
-                    x_align: Clutter.ActorAlign.CENTER,
-                    y_align: Clutter.ActorAlign.CENTER,
-                });
+            try {
+                if (icon.gicon || icon.icon_name) {
+                    displayIcon = new St.Icon({
+                        icon_size: 16,
+                        gicon: icon.gicon,
+                        icon_name: icon.icon_name,
+                        x_align: Clutter.ActorAlign.CENTER,
+                        y_align: Clutter.ActorAlign.CENTER,
+                    });
 
-                // Synchronizacja zmian (np. kropka powiadomienia na ikonie)
-                icon.connectObject(
-                    'notify::gicon', () => { displayIcon.gicon = icon.gicon; },
-                    'notify::icon-name', () => { displayIcon.icon_name = icon.icon_name; },
-                    popup // Sygnały zostaną rozłączone automatycznie przy zniszczeniu popupa
-                );
-            } else {
-                // Fallback dla ikon bez gicon/icon_name (rzadkie przypadki)
-                displayIcon = new Clutter.Clone({
-                    source: icon,
-                    width: 16,
-                    height: 16,
-                    x_align: Clutter.ActorAlign.CENTER,
-                    y_align: Clutter.ActorAlign.CENTER,
-                });
-            }
+                    icon.connectObject(
+                        'notify::gicon', () => { 
+                            try { if (!displayIcon.is_destroyed?.()) displayIcon.gicon = icon.gicon; } catch(e){}
+                        },
+                        'notify::icon-name', () => { 
+                            try { 
+                                // Jeśli ikona zamienia się w systemowego "ducha", uśmiercamy ją na miejscu
+                                if (icon.icon_name === 'image-loading-symbolic' && !icon.gicon) {
+                                    itemState.dead = true;
+                                } else if (!displayIcon.is_destroyed?.()) {
+                                    displayIcon.icon_name = icon.icon_name; 
+                                }
+                            } catch(e){}
+                        },
+                        popup
+                    );
+                } else {
+                    displayIcon = new Clutter.Clone({
+                        source: icon,
+                        width: 16,
+                        height: 16,
+                        x_align: Clutter.ActorAlign.CENTER,
+                        y_align: Clutter.ActorAlign.CENTER,
+                    });
+                }
+            } catch(e) { continue; } 
 
             const iconWrapper = new St.Bin({
                 child: displayIcon,
@@ -148,26 +182,38 @@ function toggleTrayPopup(host, sourceButton) {
             cellBtn.set_child(iconWrapper);
 
             cellBtn.connect('button-press-event', (_a, ev) => {
-                if (button.menu) {
-                    if (button.menu.isOpen) {
-                        button.menu.close();
-                    } else {
-                        if (host._trayAppMenu && host._trayAppMenu !== button.menu && host._trayAppMenu.isOpen) {
-                            host._trayAppMenu.close();
+                try {
+                    if (button.menu) {
+                        if (button.menu.isOpen) {
+                            button.menu.close();
+                        } else {
+                            if (host._trayAppMenu && host._trayAppMenu !== button.menu && host._trayAppMenu.isOpen) {
+                                host._trayAppMenu.close();
+                            }
+                            openMenuAboveBar(button.menu, sourceButton, 4, popup);
+                            host._trayAppMenu = button.menu;
                         }
-                        openMenuAboveBar(button.menu, sourceButton, 4, popup);
-                        host._trayAppMenu = button.menu;
+                    } else {
+                        button.emit('button-press-event', ev);
                     }
-                } else {
-                    button.emit('button-press-event', ev);
-                }
+                } catch(e){}
                 return Clutter.EVENT_STOP;
             });
 
             box.add_child(cellBtn);
+            renderedItems.push({ state: itemState, button, icon });
         }
     }
     
+    if (box.get_n_children() === 0 && items.length > 0) {
+        const lbl = new St.Label({
+            text: 'Brak ukrytych ikon',
+            style_class: 'tb-tray-empty',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        box.add_child(lbl);
+    }
+
     popup.set_child(box);
     popup._tbForceClosing = false;
 
@@ -208,6 +254,77 @@ function toggleTrayPopup(host, sourceButton) {
         return GLib.SOURCE_REMOVE;
     });
 
+    if (host._trayRefreshId) {
+        GLib.source_remove(host._trayRefreshId);
+        host._trayRefreshId = 0;
+    }
+
+    host._trayRefreshId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+        if (!host._trayPopup || host._panelDestroyed) {
+            host._trayRefreshId = 0;
+            return GLib.SOURCE_REMOVE;
+        }
+
+        let anyRemoved = false;
+        
+        for (let i = renderedItems.length - 1; i >= 0; i--) {
+            const item = renderedItems[i];
+            
+            // Reagujemy na natywny sygnał "destroy" otrzymany od systemu, bez wywoływania is_destroyed()
+            if (item.state.dead) {
+                if (item.state.cellBtn) {
+                    try { item.state.cellBtn.destroy(); } catch(e) {}
+                    item.state.cellBtn = null;
+                }
+                renderedItems.splice(i, 1);
+                anyRemoved = true;
+                continue;
+            }
+
+            // Miękkie skanowanie w poszukiwaniu ukrycia elementu (zabezpieczone try-catch)
+            try {
+                if (!item.button.visible || item.button.opacity === 0 || item.button.get_parent() === null || item.button.get_stage() === null ||
+                    !item.icon.visible || item.icon.opacity === 0 || item.icon.get_width() === 0) {
+                    
+                    item.state.dead = true;
+                    if (item.state.cellBtn) {
+                        try { item.state.cellBtn.destroy(); } catch(e) {}
+                        item.state.cellBtn = null;
+                    }
+                    renderedItems.splice(i, 1);
+                    anyRemoved = true;
+                }
+            } catch(e) {
+                // Skrypt trafi tutaj, jeśli obiekt w GJS zaczął się rozpadać (zabezpieczenie przed "already disposed")
+                item.state.dead = true;
+                if (item.state.cellBtn) {
+                    try { item.state.cellBtn.destroy(); } catch(err) {}
+                    item.state.cellBtn = null;
+                }
+                renderedItems.splice(i, 1);
+                anyRemoved = true;
+            }
+        }
+
+        if (anyRemoved) {
+            let validChildren = 0;
+            try {
+                validChildren = box.get_children().filter(c => {
+                    try { return c instanceof St.Button; } 
+                    catch(e) { return false; }
+                }).length;
+            } catch(e) {}
+
+            if (validChildren === 0) {
+                closeTrayPopup(host);
+                host._trayRefreshId = 0;
+                return GLib.SOURCE_REMOVE;
+            }
+        }
+
+        return GLib.SOURCE_CONTINUE;
+    });
+
     const stageId = global.stage.connect('button-press-event', (_a, ev) => {
         const [sx, sy] = ev.get_coords();
         const [px, py] = popup.get_transformed_position();
@@ -238,6 +355,11 @@ export function closeTrayPopup(host) {
     if (!popup) return;
     host._trayPopup = null;
 
+    if (host._trayRefreshId) {
+        GLib.source_remove(host._trayRefreshId);
+        host._trayRefreshId = 0;
+    }
+
     if (host._trayPopupStageId) {
         global.stage.disconnect(host._trayPopupStageId);
         host._trayPopupStageId = 0;
@@ -260,28 +382,36 @@ export function closeTrayPopup(host) {
     if (host._openMenus) host._openMenus.delete(popup);
 
     if (host._panelDestroyed || !popup.get_stage()) {
-        popup.remove_all_transitions();
-        if (popup.get_parent()) Main.uiGroup.remove_child(popup);
-        popup.destroy();
+        try {
+            popup.remove_all_transitions();
+            if (popup.get_parent()) Main.uiGroup.remove_child(popup);
+            popup.destroy();
+        } catch(e){}
     } else {
-        popup.ease({
-            opacity: 0,
-            duration: 150,
-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-            onStopped: () => {
-                popup.remove_all_transitions();
-                if (popup.get_parent()) Main.uiGroup.remove_child(popup);
-                popup.destroy();
-            },
-        });
+        try {
+            popup.ease({
+                opacity: 0,
+                duration: 150,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                onStopped: () => {
+                    try {
+                        popup.remove_all_transitions();
+                        if (popup.get_parent()) Main.uiGroup.remove_child(popup);
+                        popup.destroy();
+                    } catch(e){}
+                },
+            });
+        } catch(e){}
     }
 }
 
 function _getBarFor(sourceActor) {
     let p = sourceActor;
     while (p) {
-        if (p.has_style_class_name && p.has_style_class_name('bottom-taskbar')) return p;
-        p = p.get_parent ? p.get_parent() : null;
+        try {
+            if (p.has_style_class_name && p.has_style_class_name('bottom-taskbar')) return p;
+            p = p.get_parent ? p.get_parent() : null;
+        } catch(e) { return null; }
     }
     return null;
 }
