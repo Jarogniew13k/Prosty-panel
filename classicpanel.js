@@ -1,4 +1,4 @@
-// Prosty Panel — classicpanel.js (Bez monkey-patchingu, dynamiczne skalowanie)
+// Prosty Panel — classicpanel.js (Bez monkey-patchingu, uszczelniony wyciek pamięci)
 
 import GObject from 'gi://GObject';
 import St      from 'gi://St';
@@ -60,8 +60,11 @@ export const BottomTaskbar = GObject.registerClass({
     }
 
     _buildLeft() {
-        this.add_child(buildActivities()); this.add_child(makeSep());
-        this._apps = buildAppsList(this); this.add_child(this._apps.actor);
+        this._activitiesBtn = buildActivities();
+        this.add_child(this._activitiesBtn);
+        this.add_child(makeSep());
+        this._apps = buildAppsList(this);
+        this.add_child(this._apps.actor);
     }
 
     _buildCenterSpacer() {
@@ -117,6 +120,11 @@ export const BottomTaskbar = GObject.registerClass({
         this._panelDestroyed = true;
         this._ready = false;
 
+        // 🟢 FIX: Zwolnienie PopupMenu przycisku Aktywności z UI Group
+        if (this._activitiesBtn && typeof this._activitiesBtn._cleanup === 'function') {
+            this._activitiesBtn._cleanup();
+        }
+
         if (this._extraStatusCleanup) this._extraStatusCleanup();
         if (this._trayPopup) { closeTrayPopup(this); this._trayPopup = null; this._trayPopupStageId = 0; }
         for (const menu of this._openMenus) {
@@ -137,6 +145,8 @@ export const BottomTaskbar = GObject.registerClass({
     }
 });
 
+// UWAGA: Kod poniżej został celowo rozbity z floatpanel.js
+// w celu ułatwienia przyszłej, niezależnej modyfikacji marginesów i styli.
 export class ClassicPanel {
     constructor(settings) { this._settings = settings; this._bar = null; this._monitorId = 0; this._themeId = 0; }
     enable() {
@@ -163,7 +173,7 @@ export class ClassicPanel {
     _hideTopPanel() {
         Main.panel.opacity = 0; 
         Main.layoutManager.panelBox.opacity = 0;
-        // 🟢 FIX: Dynamiczne wyliczanie wysokości (odporne na monitory 4K / rozszerzenia)
+        
         const panelHeight = Main.layoutManager.panelBox.height || 40;
         Main.layoutManager.panelBox.translation_y = -panelHeight;
         
@@ -174,7 +184,6 @@ export class ClassicPanel {
             Main.layoutManager._queueUpdateRegions();
         }
         
-        // 🟢 FIX: Bezpieczne ukrywanie Dasha (brak wstrzykiwania funkcji w rdzeń GNOME)
         if (Main.overview?.dash) { 
             this._dashOrigOpacity = Main.overview.dash.opacity;
             this._dashOrigReactive = Main.overview.dash.reactive;

@@ -45,7 +45,6 @@ export function buildActivities() {
     const addMenuItem = (label, cmd) => {
         const item = new PopupMenu.PopupMenuItem(label);
         item.connect('activate', () => {
-            // FIX: Usunięto btn._menu.close() – GNOME zamknie menu samo
             if (cmd) Util.spawnCommandLine(cmd);
         });
         btn._menu.addMenuItem(item);
@@ -83,6 +82,14 @@ export function buildActivities() {
         }
         return Clutter.EVENT_PROPAGATE;
     });
+
+    // 🟢 CZYSZCZENIE ZASOBÓW
+    btn._cleanup = () => {
+        if (btn._menu) {
+            btn._menu.destroy();
+            btn._menu = null;
+        }
+    };
 
     return btn;
 }
