@@ -1,4 +1,4 @@
-// Prosty Panel — clock.js (GNOME 45+ Ready, connectObject)
+// Prosty Panel — clock.js (GNOME 45+ Ready, connectObject, Naprawiony Hover)
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -12,6 +12,7 @@ export function buildClock(host) {
         style_class : 'tb-clock-btn',
         reactive    : true,
         can_focus   : true,
+        track_hover : true, // 🟢 FIX: Ożywia podświetlenie na hover
         x_expand    : false,
         y_expand    : false,
         y_align     : Clutter.ActorAlign.CENTER,
@@ -51,7 +52,6 @@ export function buildClock(host) {
     const startClock = () => {
         if (!wallClock) {
             wallClock = new GnomeDesktop.WallClock();
-            // 🟢 Połączenie żywotności sygnału czasu z przyciskiem clock
             wallClock.connectObject('notify::clock', updateClock, clock);
         }
         updateClock();
@@ -83,7 +83,6 @@ export function buildClock(host) {
         };
 
         const onSourceAdded = (t, src) => {
-            // 🟢 Czyste połączenie. Zniknie, gdy zniknie clock lub gdy source zostanie usunięte
             src.connectObject('notify::count', updateDot, clock);
             updateDot();
         };

@@ -1,4 +1,4 @@
-// Prosty Panel — utils.js (Fix menu G_IS_OBJECT)
+// Prosty Panel — utils.js (Naprawiony track_hover)
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -11,7 +11,12 @@ export function makeSep() {
 
 export function makeIconBtn(iconName, styleClass = 'tb-btn') {
     return new St.Button({
-        style_class: styleClass, reactive: true, can_focus: true, x_expand: false, y_expand: false,
+        style_class: styleClass, 
+        reactive: true, 
+        can_focus: true, 
+        track_hover: true, // 🟢 FIX: Uruchamia kolorowe podświetlenie CSS
+        x_expand: false, 
+        y_expand: false,
         y_align: Clutter.ActorAlign.CENTER,
         child: new St.Icon({ icon_name: iconName, icon_size: 16, style_class: 'tb-btn-icon' })
     });
@@ -76,7 +81,6 @@ export function openMenuAboveBar(menu, sourceButton, gap = PANEL_GAP, rightAncho
 
     let isClosed = false;
 
-    // 🟢 Zabezpieczenie przed edycją niszczonego Menu
     const cleanupMenu = (isDestroying = false) => {
         if (isClosed) return;
         isClosed = true;

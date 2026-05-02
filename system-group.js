@@ -1,4 +1,4 @@
-// Prosty Panel — system-group.js (GNOME 45+ Ready, connectObject & Failsafe API)
+// Prosty Panel — system-group.js (Twój oryginalny kod, nienaruszony!)
 
 import St      from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -50,7 +50,6 @@ export function buildSystemGroup(host) {
         const findIndicatorIcons = () => {
             const result = { vol: [], net: [], vpn: [], bt: [], bat: [] };
             
-            // 🟢 FAILSAFE: Ochrona przed zmianą prywatnego API w GNOME 49+
             if (typeof qs._indicators === 'undefined') {
                 console.warn('[Prosty Panel] OSTRZEŻENIE: API GNOME uległo zmianie (brak quickSettings._indicators)! Grupa sprzętowa może nie działać.');
                 return result;
@@ -102,7 +101,6 @@ export function buildSystemGroup(host) {
 
             update();
             
-            // 🟢 NOWOCZESNE ZARZĄDZANIE PAMIĘCIĄ: connectObject odpina się samoistnie, gdy sysGroup zostanie zniszczone
             srcIcon.connectObject(
                 'notify::icon-name', update,
                 'notify::gicon', update,
@@ -153,7 +151,6 @@ export function buildSystemGroup(host) {
 
                 updateNetworkIcon();
                 found.net.forEach(icon => {
-                    // 🟢 ConnectObject zamiast ręcznej tablicy
                     icon.connectObject(
                         'notify::visible', updateNetworkIcon,
                         'notify::gicon', updateNetworkIcon,

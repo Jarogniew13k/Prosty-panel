@@ -1,4 +1,4 @@
-// Prosty Panel — intellihide.js (Wyciszony GSignal)
+// Prosty Panel — intellihide.js (Wyciszony GSignal + Blokada Tacy)
 
 import Clutter from 'gi://Clutter';
 import GLib    from 'gi://GLib';
@@ -34,6 +34,7 @@ export const Intellihide = GObject.registerClass({
         this._proximityOverlap = false;
         this._enabled          = false;
         this._targetBox        = null;
+        this._blocked          = false; // 🟢 FIX: Flaga blokująca autoukrywanie (dla dymka tacy)
 
         this._hideTimer       = null;
         this._showTimer       = null;
@@ -49,6 +50,17 @@ export const Intellihide = GObject.registerClass({
     updateTargetBox(box) {
         this._targetBox = box;
         if (this._enabled) this._queueProximityCheck();
+    }
+
+    // 🟢 METODY BLOKOWANIA (Wymagane przez tray-popup.js)
+    block() {
+        this._blocked = true;
+        this._updatePanelVisibility(true);
+    }
+
+    unblock() {
+        this._blocked = false;
+        this._updatePanelVisibility(false);
     }
 
     enable() {
@@ -97,7 +109,6 @@ export const Intellihide = GObject.registerClass({
         if (this._checkDebounceId)  { GLib.source_remove(this._checkDebounceId);  this._checkDebounceId = 0; }
         if (this._newWinRecheckId)  { GLib.source_remove(this._newWinRecheckId);  this._newWinRecheckId = 0; }
 
-        // 🟢 FIX: Ochrona GSignal przed błędami przy wyłączaniu autohide
         for (const sig of this._generalSignals) { 
             try { 
                 if (sig.obj && GObject.signal_handler_is_connected(sig.obj, sig.id)) {
@@ -166,7 +177,6 @@ export const Intellihide = GObject.registerClass({
 
     _untrackWindow(win, ids) {
         if (!ids) ids = this._trackedWindows.get(win) || [];
-        // 🟢 FIX: Ochrona GSignal przy odłączaniu okien
         for (const id of ids) {
             try { 
                 if (GObject.signal_handler_is_connected(win, id)) {
@@ -328,6 +338,7 @@ export const Intellihide = GObject.registerClass({
     }
 
     _shouldBeVisible() {
+        if (this._blocked) return true; // 🟢 FIX: Blokada dymka tacy ma najwyższy priorytet
         if (Main.overview.visible)      return true;
         if (this._holdCounter > 0)      return true;
         if (this._isAnyWindowFullscreen()) return false;
@@ -347,7 +358,7 @@ export const Intellihide = GObject.registerClass({
         if (this._hideTimer) { GLib.source_remove(this._hideTimer); this._hideTimer = null; }
         this.emit('showing');
         this._visible = true;
-        this._cancelAnimation();
+        this._panel.remove_all_transitions();
         this._panel.show();
         this._panel.set_reactive(true);
         if (immediate) { this._panel.translation_y = 0; this._panel.opacity = 255; } else { this._animateTo(0, 0); }
@@ -369,7 +380,7 @@ export const Intellihide = GObject.registerClass({
     _hidePanel() {
         this.emit('hiding');
         this._visible = false;
-        this._cancelAnimation();
+        this._panel.remove_all_transitions();
         const targetY = this._panel.height;
         this._animateTo(targetY, 0, () => {
             this._panel.opacity = 0;
@@ -390,6 +401,4 @@ export const Intellihide = GObject.registerClass({
             onStopped     : () => { if (onComplete) onComplete(); Main.layoutManager._queueUpdateRegions(); },
         });
     }
-
-    _cancelAnimation() { this._panel.remove_all_transitions(); }
 });

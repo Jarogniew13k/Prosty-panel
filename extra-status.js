@@ -1,4 +1,4 @@
-// Prosty Panel — extra-status.js (GNOME 45+ Ready, connectObject)
+// Prosty Panel — extra-status.js (GNOME 49 Ready, connectObject, Naprawiony Hover)
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -19,6 +19,7 @@ export function buildExtraStatus(host) {
         style_class: 'tb-rec-pill',
         reactive: true,
         can_focus: true,
+        track_hover: true,
         visible: false,
         y_align: Clutter.ActorAlign.CENTER,
     });
@@ -41,6 +42,7 @@ export function buildExtraStatus(host) {
         style_class: 'tb-rec-pill tb-share-btn',
         reactive: true,
         can_focus: true,
+        track_hover: true,
         visible: false,
         y_align: Clutter.ActorAlign.CENTER,
         style: 'background-color: #e66100;' 
@@ -60,6 +62,7 @@ export function buildExtraStatus(host) {
         style_class: 'tb-btn',
         reactive: true,
         can_focus: true,
+        track_hover: true,
         visible: false,
         y_align: Clutter.ActorAlign.CENTER,
     });
@@ -76,6 +79,7 @@ export function buildExtraStatus(host) {
         style_class: 'tb-btn tb-kbd-btn',
         reactive: true,
         can_focus: true,
+        track_hover: true,
         visible: false,
         y_align: Clutter.ActorAlign.CENTER,
     });
@@ -95,7 +99,7 @@ export function buildExtraStatus(host) {
         { id: 'a11y', fallback: 'preferences-desktop-accessibility-symbolic', color: null },
         { id: 'dwellClick', fallback: 'pointer-drag-symbolic', color: null }
     ].map(config => {
-        const btn = new St.Button({ style_class: 'tb-btn', reactive: true, can_focus: true, visible: false, y_align: Clutter.ActorAlign.CENTER });
+        const btn = new St.Button({ style_class: 'tb-btn', reactive: true, can_focus: true, track_hover: true, visible: false, y_align: Clutter.ActorAlign.CENTER });
         const icon = new St.Icon({ icon_name: config.fallback, icon_size: 16, style_class: 'tb-btn-icon' });
         
         if (config.color) icon.style = `color: ${config.color};`;
@@ -194,16 +198,21 @@ export function buildExtraStatus(host) {
                     if (host._panelDestroyed) return;
                     if (ism.currentSource && ism.currentSource.shortName) kbdLabel.set_text(ism.currentSource.shortName);
                 };
-                // 🟢 ConnectObject podpięty pod główne 'box' (kiedy pasek ginie, box ginie, a z nim sygnał)
                 ism.connectObject('current-source-changed', updateLabel, box);
                 isKbdTimeout = false;
                 updateLabel();
             }
         } catch (e) {
-            // Starsze metody fallback
             isKbdTimeout = true;
+            if (box._kbdFallbackId) {
+                GLib.source_remove(box._kbdFallbackId);
+                box._kbdFallbackId = 0;
+            }
             let kbdFallbackId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
-                if (host._panelDestroyed || box.is_destroyed?.()) { kbdFallbackId = 0; return GLib.SOURCE_REMOVE; } 
+                if (host._panelDestroyed || box.is_destroyed?.()) {
+                    box._kbdFallbackId = 0;
+                    return GLib.SOURCE_REMOVE;
+                } 
                 if (kbd.visible) {
                     let text = '';
                     if (kbd._indicator && typeof kbd._indicator.get_text === 'function') text = kbd._indicator.get_text();
@@ -212,7 +221,6 @@ export function buildExtraStatus(host) {
                 }
                 return GLib.SOURCE_CONTINUE;
             });
-            // Zachowujemy informację do posprzątania, jeśli użyto fallbacku (GLib.timeout_add nie da się zapiąć przez connectObject)
             box._kbdFallbackId = kbdFallbackId;
         }
     };
@@ -220,7 +228,6 @@ export function buildExtraStatus(host) {
     GLib.idle_add(GLib.PRIORITY_LOW, () => {
         if (host._panelDestroyed) return GLib.SOURCE_REMOVE;
         
-        // 🟢 Użycie connectObject do wszystkich sygnałów z Main.panel!
         const sr = Main.panel.statusArea.screenRecording;
         if (sr) sr.connectObject('notify::visible', syncRec, box);
 

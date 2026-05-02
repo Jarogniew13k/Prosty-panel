@@ -1,417 +1,305 @@
-// Prosty Panel — tray-popup.js (Ostateczny Skaner sygnałowy bez błędów "already disposed")
+// Prosty Panel — tray-popup.js (v2.2 GNOME 49 Ready)
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-import { PANEL_HEIGHT } from './constants.js';
+import { TrayBackend } from './appindicator-backend.js';
 import { makeIconBtn, openMenuAboveBar } from './utils.js';
+import { PANEL_HEIGHT, ICON_SIZE } from './constants.js';
 
 function getThemeClass(host) {
-    if (host && host._settings && typeof host._settings.get_string === 'function') {
-        const theme = host._settings.get_string('theme');
-        if (theme) return `theme-${theme}`;
+    if (host && host._settings) {
+        try {
+            const keys = host._settings.list_keys();
+            if (keys.includes('theme')) {
+                const theme = host._settings.get_string('theme');
+                if (theme) return `theme-${theme}`;
+            }
+        } catch (e) { }
     }
     if (host && host.get_style_class_name) {
         const classes = host.get_style_class_name().split(' ');
         const themeClass = classes.find(c => c.startsWith('theme-'));
         if (themeClass) return themeClass;
     }
-    return 'theme-gradient-dark';
+    return 'theme-gnome-dark';
 }
 
 export function buildTrayArrow(host) {
     const arrowBtn = makeIconBtn('pan-up-symbolic', 'tb-btn tb-arrow');
-    arrowBtn.connect('clicked', () => {
-        if (!host._ready) return;
-        toggleTrayPopup(host, arrowBtn);
-    });
-    return arrowBtn;
-}
+    arrowBtn.visible = false;
 
-function findTrayIndicators() {
-    const out = [];
-    const statusArea = Main.panel.statusArea;
-    
-    for (const key in statusArea) {
-        if (!key.startsWith('appindicator-')) continue;
-        const btn = statusArea[key];
-        
-        if (!btn) continue;
-
-        try {
-            if (!btn.visible || btn.opacity === 0 || btn.get_width() === 0 || btn.get_parent() === null) continue;
-        } catch(e) { continue; } // Omijamy bezpiecznie uśmiercone w tle obiekty
-        
-        let icon = null;
-        const walk = (a) => {
-            if (icon) return;
-            try {
-                if (!a || !a.visible || a.opacity === 0 || a.get_width() === 0) return; 
-                
-                if (a instanceof St.Icon) { 
-                    // 🟢 FIX: Odrzucamy systemową ikonę awaryjną (Ghosta), która pojawia się przy restartach Discorda!
-                    if (a.icon_name === 'image-loading-symbolic' && !a.gicon) {
-                        return; 
-                    }
-                    if (a.gicon || a.icon_name) {
-                         icon = a; 
-                    }
-                    return; 
-                }
-                if (typeof a.get_children === 'function') {
-                    for (const c of a.get_children()) walk(c);
-                }
-            } catch(e) {}
-        };
-        walk(btn);
-        
-        if (icon) out.push({ button: btn, icon });
-    }
-    return out;
-}
-
-function toggleTrayPopup(host, sourceButton) {
-    if (host._trayPopup) {
-        closeTrayPopup(host);
-        return;
-    }
-
-    if (host._trayPopupStageId) {
-        global.stage.disconnect(host._trayPopupStageId);
-        host._trayPopupStageId = 0;
-    }
-
-    const items = findTrayIndicators();
+    host._trayBackend = new TrayBackend();
 
     const popup = new St.Bin({
         style_class: 'tb-tray-popup',
-        reactive: true,
+        reactive: true, opacity: 0, visible: false
     });
-
-    const themeClass = getThemeClass(host);
-    popup.add_style_class_name(themeClass);
 
     const box = new St.BoxLayout({
         style_class: 'tb-tray-popup-box',
+        reactive: true, // wymagane w nowszym API GNOME
         y_align: Clutter.ActorAlign.CENTER,
     });
-
-    const renderedItems = [];
-
-    if (items.length === 0) {
-        const lbl = new St.Label({
-            text: 'Brak ukrytych ikon',
-            style_class: 'tb-tray-empty',
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-        box.add_child(lbl);
-    } else {
-        for (const { button, icon } of items) {
-            
-            let itemState = { dead: false, cellBtn: null };
-
-            // 🟢 ZABEZPIECZENIE: Podpinamy natywne sygnały niszczenia, które automatycznie ustawiają flagę "dead"
-            // bez wywoływania niebezpiecznych funkcji .is_destroyed() na umierających obiektach C++.
-            try {
-                button.connectObject('destroy', () => { itemState.dead = true; }, popup);
-                icon.connectObject('destroy', () => { itemState.dead = true; }, popup);
-            } catch(e) { continue; } // Jeśli padło w ułamku sekundy, pomijamy element
-
-            const cellBtn = new St.Button({
-                style_class: 'tb-tray-cell',
-                reactive: true,
-                can_focus: true,
-                track_hover: true,
-                x_expand: false,
-                y_expand: false,
-                width: 32,
-                height: 32,
-            });
-
-            itemState.cellBtn = cellBtn;
-            let displayIcon;
-
-            try {
-                if (icon.gicon || icon.icon_name) {
-                    displayIcon = new St.Icon({
-                        icon_size: 16,
-                        gicon: icon.gicon,
-                        icon_name: icon.icon_name,
-                        x_align: Clutter.ActorAlign.CENTER,
-                        y_align: Clutter.ActorAlign.CENTER,
-                    });
-
-                    icon.connectObject(
-                        'notify::gicon', () => { 
-                            try { if (!displayIcon.is_destroyed?.()) displayIcon.gicon = icon.gicon; } catch(e){}
-                        },
-                        'notify::icon-name', () => { 
-                            try { 
-                                // Jeśli ikona zamienia się w systemowego "ducha", uśmiercamy ją na miejscu
-                                if (icon.icon_name === 'image-loading-symbolic' && !icon.gicon) {
-                                    itemState.dead = true;
-                                } else if (!displayIcon.is_destroyed?.()) {
-                                    displayIcon.icon_name = icon.icon_name; 
-                                }
-                            } catch(e){}
-                        },
-                        popup
-                    );
-                } else {
-                    displayIcon = new Clutter.Clone({
-                        source: icon,
-                        width: 16,
-                        height: 16,
-                        x_align: Clutter.ActorAlign.CENTER,
-                        y_align: Clutter.ActorAlign.CENTER,
-                    });
-                }
-            } catch(e) { continue; } 
-
-            const iconWrapper = new St.Bin({
-                child: displayIcon,
-                width: 16,
-                height: 16,
-                x_align: Clutter.ActorAlign.CENTER,
-                y_align: Clutter.ActorAlign.CENTER,
-            });
-
-            cellBtn.set_child(iconWrapper);
-
-            cellBtn.connect('button-press-event', (_a, ev) => {
-                try {
-                    if (button.menu) {
-                        if (button.menu.isOpen) {
-                            button.menu.close();
-                        } else {
-                            if (host._trayAppMenu && host._trayAppMenu !== button.menu && host._trayAppMenu.isOpen) {
-                                host._trayAppMenu.close();
-                            }
-                            openMenuAboveBar(button.menu, sourceButton, 4, popup);
-                            host._trayAppMenu = button.menu;
-                        }
-                    } else {
-                        button.emit('button-press-event', ev);
-                    }
-                } catch(e){}
-                return Clutter.EVENT_STOP;
-            });
-
-            box.add_child(cellBtn);
-            renderedItems.push({ state: itemState, button, icon });
-        }
-    }
-    
-    if (box.get_n_children() === 0 && items.length > 0) {
-        const lbl = new St.Label({
-            text: 'Brak ukrytych ikon',
-            style_class: 'tb-tray-empty',
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-        box.add_child(lbl);
-    }
-
     popup.set_child(box);
-    popup._tbForceClosing = false;
 
-    Main.uiGroup.add_child(popup);
-    popup.opacity = 0;
-
-    const mon = Main.layoutManager.primaryMonitor;
-    let barTop;
-    let panel = _getBarFor(sourceButton);
-    if (panel && panel.has_style_class_name('mode-floating')) {
-        barTop = mon.y + mon.height - PANEL_HEIGHT - 8;
-    } else {
-        barTop = mon.y + mon.height - PANEL_HEIGHT;
-    }
-
-    host._trayPopupPositionId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-        if (!host._trayPopup) return GLib.SOURCE_REMOVE;
-        const w = popup.width;
-        const h = popup.height;
-        const [bx] = sourceButton.get_transformed_position();
-        const bw = sourceButton.get_width();
-        let x = bx + (bw / 2) - (w / 2);
-        
-        const minX = mon.x + 4;
-        const maxX = mon.x + mon.width - w - 4;
-        if (x < minX) x = minX;
-        if (x > maxX) x = maxX;
-        
-        const y = barTop - h - 4;
-        
-        popup.set_position(Math.floor(x), Math.floor(y));
-        popup.ease({
-            opacity: 255,
-            duration: 150,
-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-        });
-        host._trayPopupPositionId = 0;
-        return GLib.SOURCE_REMOVE;
-    });
-
-    if (host._trayRefreshId) {
-        GLib.source_remove(host._trayRefreshId);
-        host._trayRefreshId = 0;
-    }
-
-    host._trayRefreshId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
-        if (!host._trayPopup || host._panelDestroyed) {
-            host._trayRefreshId = 0;
-            return GLib.SOURCE_REMOVE;
-        }
-
-        let anyRemoved = false;
-        
-        for (let i = renderedItems.length - 1; i >= 0; i--) {
-            const item = renderedItems[i];
-            
-            // Reagujemy na natywny sygnał "destroy" otrzymany od systemu, bez wywoływania is_destroyed()
-            if (item.state.dead) {
-                if (item.state.cellBtn) {
-                    try { item.state.cellBtn.destroy(); } catch(e) {}
-                    item.state.cellBtn = null;
-                }
-                renderedItems.splice(i, 1);
-                anyRemoved = true;
-                continue;
-            }
-
-            // Miękkie skanowanie w poszukiwaniu ukrycia elementu (zabezpieczone try-catch)
-            try {
-                if (!item.button.visible || item.button.opacity === 0 || item.button.get_parent() === null || item.button.get_stage() === null ||
-                    !item.icon.visible || item.icon.opacity === 0 || item.icon.get_width() === 0) {
-                    
-                    item.state.dead = true;
-                    if (item.state.cellBtn) {
-                        try { item.state.cellBtn.destroy(); } catch(e) {}
-                        item.state.cellBtn = null;
-                    }
-                    renderedItems.splice(i, 1);
-                    anyRemoved = true;
-                }
-            } catch(e) {
-                // Skrypt trafi tutaj, jeśli obiekt w GJS zaczął się rozpadać (zabezpieczenie przed "already disposed")
-                item.state.dead = true;
-                if (item.state.cellBtn) {
-                    try { item.state.cellBtn.destroy(); } catch(err) {}
-                    item.state.cellBtn = null;
-                }
-                renderedItems.splice(i, 1);
-                anyRemoved = true;
-            }
-        }
-
-        if (anyRemoved) {
-            let validChildren = 0;
-            try {
-                validChildren = box.get_children().filter(c => {
-                    try { return c instanceof St.Button; } 
-                    catch(e) { return false; }
-                }).length;
-            } catch(e) {}
-
-            if (validChildren === 0) {
-                closeTrayPopup(host);
-                host._trayRefreshId = 0;
-                return GLib.SOURCE_REMOVE;
-            }
-        }
-
-        return GLib.SOURCE_CONTINUE;
-    });
-
-    const stageId = global.stage.connect('button-press-event', (_a, ev) => {
-        const [sx, sy] = ev.get_coords();
-        const [px, py] = popup.get_transformed_position();
-        const pw = popup.width, ph = popup.height;
-        const insidePopup = (sx >= px && sx <= px + pw && sy >= py && sy <= py + ph);
-        
-        const [ax, ay] = sourceButton.get_transformed_position();
-        const aw = sourceButton.get_width(), ah = sourceButton.get_height();
-        const onArrow = (sx >= ax && sx <= ax + aw && sy >= ay && sy <= ay + ah);
-        
-        if (!insidePopup && !onArrow) {
-            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-                if (host._trayPopup) closeTrayPopup(host);
-                return GLib.SOURCE_REMOVE;
-            });
-        }
-    });
-
-    host._trayPopupStageId = stageId;
     host._trayPopup = popup;
-    if (host._openMenus) host._openMenus.add(popup);
+    host._trayPopupIsOpen = false;
 
-    try { host.emit('menu-opened'); } catch (e) {}
+    arrowBtn.connect('clicked', () => {
+        if (host._trayPopupIsOpen) {
+            closeTrayPopup(host);
+        } else {
+            const themeClass = getThemeClass(host);
+            const classes = popup.get_style_class_name().split(' ');
+            classes.filter(c => c.startsWith('theme-')).forEach(c => popup.remove_style_class_name(c));
+            popup.add_style_class_name(themeClass);
+
+            if (!popup.get_parent()) Main.uiGroup.add_child(popup);
+            popup.visible = true;
+
+            const [ax, ay] = arrowBtn.get_transformed_position();
+            const [minW, pw] = popup.get_preferred_width(-1);
+            const [minH, ph] = popup.get_preferred_height(-1);
+
+            const mon = Main.layoutManager.primaryMonitor;
+            let x = ax + (arrowBtn.width / 2) - (pw / 2);
+            if (x < mon.x + 4) x = mon.x + 4;
+            if (x > mon.x + mon.width - pw - 4) x = mon.x + mon.width - pw - 4;
+
+            let barTop = (host && host.has_style_class_name('mode-floating'))
+                ? mon.y + mon.height - PANEL_HEIGHT - 8
+                : mon.y + mon.height - PANEL_HEIGHT;
+
+            popup.set_position(Math.floor(x), Math.floor(barTop - ph - 4));
+            popup.ease({ opacity: 255, duration: 150, mode: Clutter.AnimationMode.EASE_OUT_QUAD });
+            host._trayPopupIsOpen = true;
+
+            if (host._intellihide) host._intellihide.block();
+
+            if (!host._trayPopupStageId) {
+                host._trayPopupStageId = global.stage.connect('button-press-event', (_a, ev) => {
+                    const [sx, sy] = ev.get_coords();
+                    const [px, py] = popup.get_transformed_position();
+                    const insidePopup = (sx >= px && sx <= px + popup.width && sy >= py && sy <= py + popup.height);
+                    const [bx, by] = arrowBtn.get_transformed_position();
+                    const onArrow = (sx >= bx && sx <= bx + arrowBtn.width && sy >= by && sy <= by + arrowBtn.height);
+
+                    if (!insidePopup && !onArrow && (!host._activeAppMenu || !host._activeAppMenu.isOpen)) {
+                        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                            if (host._trayPopupIsOpen) closeTrayPopup(host);
+                            return GLib.SOURCE_REMOVE;
+                        });
+                    }
+                    return Clutter.EVENT_PROPAGATE;
+                });
+            }
+        }
+    });
+
+    host._trayBackend.connect('item-added', (b, service, item) => {
+        const existing = box.get_children().find(c => c._service === service);
+        if (existing) existing.destroy();
+
+        const cellBtn = new St.Button({
+            style_class: 'tb-tray-cell',
+            reactive: true, can_focus: true, track_hover: true,
+            x_expand: false, y_expand: false, width: 32, height: 32
+        });
+
+        const iconWrapper = new St.Bin({
+            width: 16,
+            height: 16,
+            x_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.CENTER
+        });
+
+        let icon;
+
+        if (item.pixbuf) {
+            icon = new St.Icon({
+                gicon: item.pixbuf,
+                icon_size: ICON_SIZE,
+                style_class: 'tb-tray-cell-icon'
+            });
+        } else if (item.absoluteIconPath) {
+            try {
+                const gfile = Gio.File.new_for_path(item.absoluteIconPath);
+                const gicon = new Gio.FileIcon({ file: gfile });
+                icon = new St.Icon({ gicon, icon_size: ICON_SIZE, style_class: 'tb-tray-cell-icon' });
+            } catch (e) {
+                icon = null;
+            }
+        } else if (item.fallbackGIcon) {
+            try {
+                icon = new St.Icon({ gicon: item.fallbackGIcon, icon_size: ICON_SIZE, style_class: 'tb-tray-cell-icon' });
+            } catch (e) { icon = null; }
+        }
+
+        if (!icon) {
+            const themed = Gio.ThemedIcon.new_from_names(item.iconNames);
+            icon = new St.Icon({ gicon: themed, icon_size: ICON_SIZE, style_class: 'tb-tray-cell-icon' });
+        }
+
+        iconWrapper.set_child(icon);
+        cellBtn.set_child(iconWrapper);
+        cellBtn._service = service;
+
+        cellBtn.connect('button-press-event', (actor, event) => {
+            const btn = event.get_button();
+            const [mouseX, mouseY] = event.get_coords();
+
+            if (btn === 1) {
+                if (item.itemIsMenu) {
+                    if (item.menuProxy) _buildAndOpenDBusMenu(item, cellBtn, host, popup);
+                    else item.contextMenu(Math.floor(mouseX), Math.floor(mouseY));
+                } else {
+                    item.activate(Math.floor(mouseX), Math.floor(mouseY));
+                }
+                closeTrayPopup(host);
+                return Clutter.EVENT_STOP;
+            } else if (btn === 3) {
+                if (item.menuProxy) {
+                    _buildAndOpenDBusMenu(item, cellBtn, host, popup);
+                } else {
+                    item.contextMenu(Math.floor(mouseX), Math.floor(mouseY));
+                    closeTrayPopup(host);
+                }
+                return Clutter.EVENT_STOP;
+            }
+            return Clutter.EVENT_PROPAGATE;
+        });
+
+        box.add_child(cellBtn);
+        arrowBtn.visible = true;
+    });
+
+    host._trayBackend.connect('item-removed', (b, service) => {
+        box.get_children().forEach(c => { if (c._service === service) c.destroy(); });
+        if (box.get_n_children() === 0) { arrowBtn.visible = false; closeTrayPopup(host); }
+    });
+
+    return arrowBtn;
+}
+
+async function _buildAndOpenDBusMenu(item, sourceActor, host, popup) {
+    if (host._activeAppMenu) {
+        host._activeAppMenu.close();
+        host._activeAppMenu.destroy();
+        host._activeAppMenu = null;
+    }
+
+    try {
+        const res = await new Promise((resolve, reject) => {
+            item.menuProxy.call(
+                'GetLayout', new GLib.Variant('(iias)', [0, -1, []]),
+                Gio.DBusCallFlags.NONE, -1, null,
+                (p, r) => {
+                    try { resolve(p.call_finish(r)); } catch(e) { reject(e); }
+                }
+            );
+        });
+
+        // 🔒 Zabezpieczenie przed zniszczeniem panelu/tacy w trakcie oczekiwania
+        if (host._panelDestroyed || !popup || !popup.get_parent()) return;
+
+        const unpacked = res.deep_unpack();
+        const rootChildren = unpacked[1][2];
+
+        const menu = new PopupMenu.PopupMenu(sourceActor, 0.5, St.Side.BOTTOM);
+        Main.uiGroup.add_child(menu.actor);
+        host._activeAppMenu = menu;
+
+        if (!host._trayMenuManager) host._trayMenuManager = new PopupMenu.PopupMenuManager(host);
+        host._trayMenuManager.addMenu(menu);
+
+        const buildMenuLevel = (childrenArray, parentMenu) => {
+            for (const childVar of childrenArray) {
+                let child = childVar;
+                try {
+                    while (child instanceof GLib.Variant) {
+                        child = (typeof child.deep_unpack === 'function') ? child.deep_unpack() : child.unpack();
+                    }
+                } catch(e) {}
+
+                const id = child[0], props = child[1], subChildren = child[2];
+
+                const getProp = (key, defaultVal) => {
+                    let v = props[key];
+                    if (v === undefined) return defaultVal;
+                    try {
+                        while (v instanceof GLib.Variant) {
+                            v = (typeof v.deep_unpack === 'function') ? v.deep_unpack() : v.unpack();
+                        }
+                        return v;
+                    } catch(e) { return defaultVal; }
+                };
+
+                if (!getProp('visible', true)) continue;
+                if (getProp('type', 'standard') === 'separator') {
+                    parentMenu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+                    continue;
+                }
+
+                let label = String(getProp('label', 'Opcja')).replace(/_/g, '');
+                const toggleType = getProp('toggle-type', ''), toggleState = getProp('toggle-state', 0);
+                if ((toggleType === 'checkmark' || toggleType === 'radio') && toggleState === 1) label = '✓ ' + label;
+
+                if (subChildren && subChildren.length > 0) {
+                    const subMenuItem = new PopupMenu.PopupSubMenuMenuItem(label);
+                    buildMenuLevel(subChildren, subMenuItem.menu);
+                    parentMenu.addMenuItem(subMenuItem);
+                } else {
+                    const menuItem = new PopupMenu.PopupMenuItem(label);
+                    if (!getProp('enabled', true)) menuItem.setSensitive(false);
+                    menuItem.connect('activate', () => {
+                        item.menuProxy.call(
+                            'Event', new GLib.Variant('(isvu)', [id, 'clicked', new GLib.Variant('s', ''), 0]),
+                            Gio.DBusCallFlags.NONE, -1, null,
+                            (p, r) => {
+                                try { p.call_finish(r); } catch(e) { console.warn('[ProstyPanel:Tray] Menu item event error:', e.message); }
+                            }
+                        );
+                        closeTrayPopup(host);
+                    });
+                    parentMenu.addMenuItem(menuItem);
+                }
+            }
+        };
+
+        buildMenuLevel(rootChildren, menu);
+        menu.connect('menu-closed', () => {
+            menu.destroy();
+            if (host._activeAppMenu === menu) host._activeAppMenu = null;
+        });
+
+        openMenuAboveBar(menu, sourceActor, 4, popup);
+        menu.open(true);
+
+    } catch (e) {
+        console.warn('[ProstyPanel:Tray] Error building DBusMenu fallback to contextMenu:', e.message);
+        const [mouseX, mouseY] = sourceActor.get_transformed_position();
+        item.contextMenu(Math.floor(mouseX), Math.floor(mouseY));
+    }
 }
 
 export function closeTrayPopup(host) {
-    const popup = host._trayPopup;
-    if (!popup) return;
-    host._trayPopup = null;
+    if (!host._trayPopup || !host._trayPopupIsOpen) return;
+    host._trayPopupIsOpen = false;
 
-    if (host._trayRefreshId) {
-        GLib.source_remove(host._trayRefreshId);
-        host._trayRefreshId = 0;
-    }
+    if (host._intellihide) host._intellihide.unblock();
+    if (host._trayPopupStageId) { global.stage.disconnect(host._trayPopupStageId); host._trayPopupStageId = 0; }
+    if (host._activeAppMenu) { host._activeAppMenu.close(); }
 
-    if (host._trayPopupStageId) {
-        global.stage.disconnect(host._trayPopupStageId);
-        host._trayPopupStageId = 0;
-    }
-
-    try { host.emit('menu-closed'); } catch (e) {}
-
-    if (host._trayPopupPositionId) {
-        GLib.source_remove(host._trayPopupPositionId);
-        host._trayPopupPositionId = 0;
-    }
-
-    popup._tbForceClosing = true;
-
-    if (host._trayAppMenu && host._trayAppMenu.isOpen) {
-        host._trayAppMenu.close();
-    }
-    host._trayAppMenu = null;
-
-    if (host._openMenus) host._openMenus.delete(popup);
-
-    if (host._panelDestroyed || !popup.get_stage()) {
-        try {
-            popup.remove_all_transitions();
-            if (popup.get_parent()) Main.uiGroup.remove_child(popup);
-            popup.destroy();
-        } catch(e){}
-    } else {
-        try {
-            popup.ease({
-                opacity: 0,
-                duration: 150,
-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                onStopped: () => {
-                    try {
-                        popup.remove_all_transitions();
-                        if (popup.get_parent()) Main.uiGroup.remove_child(popup);
-                        popup.destroy();
-                    } catch(e){}
-                },
-            });
-        } catch(e){}
-    }
-}
-
-function _getBarFor(sourceActor) {
-    let p = sourceActor;
-    while (p) {
-        try {
-            if (p.has_style_class_name && p.has_style_class_name('bottom-taskbar')) return p;
-            p = p.get_parent ? p.get_parent() : null;
-        } catch(e) { return null; }
-    }
-    return null;
+    host._trayPopup.ease({
+        opacity: 0,
+        duration: 150,
+        mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+        onStopped: () => { if (host._trayPopup) host._trayPopup.visible = false; } 
+    });
 }

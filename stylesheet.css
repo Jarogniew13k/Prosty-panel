@@ -1,25 +1,16 @@
 /* ============================================================
-   Prosty Panel — stylesheet.css (Wersja 100% stabilna)
+   Prosty Panel — stylesheet.css (Wersja zunifikowana)
    ============================================================ */
 
-/* ── GLOBALNE STYLE MARKERA DROP (ZAPEWNIA WIDOCZNOŚĆ) ────── */
-.tb-drop-marker {
-    background-color: #ffffff; /* Kolor zapasowy */
-    border-radius: 2px;
-    box-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
-}
+.tb-drop-marker { background-color: #ffffff; border-radius: 2px; box-shadow: 0 0 4px rgba(0, 0, 0, 0.6); }
 
-/* ── Główny pasek ────────────────────────────────────────── */
 .bottom-taskbar {
     background-color : #141428;
     border-top-color : rgba(255, 255, 255, 0.10);
     border-top-width : 1px;
     border-top-style : solid;
     min-height       : 48px;
-    padding-left     : 4px;
-    padding-right    : 4px;
-    padding-top      : 0px;
-    padding-bottom   : 0px;
+    padding-left     : 4px; padding-right : 4px;
 }
 
 .bottom-taskbar.mode-floating {
@@ -30,181 +21,61 @@
     box-shadow       : 0 4px 12px rgba(0, 0, 0, 0.35);
 }
 
-/* ── Przyciski aplikacji i aktywności ────────────────────── */
-.tb-act-btn,
-.tb-app-btn {
-    min-width        : 44px;
-    max-width        : 44px;
-    min-height       : 40px;
-    max-height       : 40px;
-    margin-top       : 0px;
-    margin-bottom    : 0px;
-    padding-left     : 0px;
-    padding-right    : 0px;
-    padding-top      : 0px;
-    padding-bottom   : 0px;
-    border-width     : 0px;
-    border-radius    : 7px;
-    background-color : transparent;
+.tb-act-btn, .tb-app-btn {
+    min-width: 44px; max-width: 44px; min-height: 40px; max-height: 40px;
+    border-width: 0px; border-radius: 7px; background-color: transparent;
 }
+.tb-app-btn { padding-top : 3px; }
 
-.tb-app-btn {
-    padding-top      : 3px;
-}
+.tb-act-btn:hover, .tb-app-btn:hover, .tb-btn:hover, .tb-sys-group:hover, .tb-clock-btn:hover { background-color : rgba(255, 255, 255, 0.12); }
+.tb-act-btn:active, .tb-app-btn:active, .tb-btn:active, .tb-sys-group:active, .tb-clock-btn:active { background-color : rgba(255, 255, 255, 0.18); }
 
-.tb-act-btn:hover,
-.tb-app-btn:hover,
-.tb-btn:hover,
-.tb-sys-group:hover,
-.tb-clock-btn:hover {
-    background-color : rgba(255, 255, 255, 0.12);
-}
+.tb-act-icon { color : rgba(110, 140, 255, 0.85); icon-size : 28px; }
 
-.tb-act-btn:active,
-.tb-app-btn:active,
-.tb-btn:active,
-.tb-sys-group:active,
-.tb-clock-btn:active {
-    background-color : rgba(255, 255, 255, 0.18);
-}
-
-/* ── Ikona aktywności ───────────────────────────────────── */
-.tb-act-icon {
-    color     : rgba(110, 140, 255, 0.85);
-    icon-size : 28px;
-}
-.tb-act-btn:hover .tb-act-icon { color : #ffffff; }
-
-/* ── Przyciski tacy ──────────────────────────────────────── */
 .tb-btn {
-    min-width        : 32px;
-    max-width        : 32px;
-    min-height       : 32px;
-    max-height       : 32px;
-    margin-top       : 0px;
-    margin-bottom    : 0px;
-    margin-left      : 1px;
-    margin-right     : 1px;
-    padding          : 0px;
-    border-width     : 0px;
-    border-radius    : 7px;
-    background-color : transparent;
+    min-width: 32px; max-width: 32px; min-height: 32px; max-height: 32px;
+    margin-left: 1px; margin-right: 1px; border-width: 0px; border-radius: 7px; background-color: transparent;
 }
-.tb-btn-icon {
-    icon-size        : 16px;
-    color            : rgba(200, 205, 235, 0.65);
-}
-.tb-btn:hover .tb-btn-icon { color : #ffffff; }
+.tb-btn-icon { icon-size : 16px; color : rgba(200, 205, 235, 0.65); }
 
 .tb-pwr:hover .tb-btn-icon { color : #f47a80 !important; }
 .tb-pwr:hover { background-color : rgba(244, 86, 110, 0.16) !important; }
 
-/* ── Statusy (Klawiatura, Nagrywanie, Ekran) ─────────────── */
-.tb-extra-status {
-    spacing: 2px;
-}
-.tb-kbd-btn {
-    max-width: 200px !important;
-    padding-left: 8px;
-    padding-right: 8px;
-}
-.tb-kbd-label {
-    font-size: 13px;
-    font-weight: bold;
-}
+.tb-extra-status { spacing: 2px; }
+.tb-kbd-btn { max-width: 200px !important; padding-left: 8px; padding-right: 8px; }
+.tb-kbd-label { font-size: 13px; font-weight: bold; }
 
 .tb-rec-pill {
-    background-color: #e01b24 !important;
-    border-radius: 999px !important;
-    padding-left: 10px !important;
-    padding-right: 10px !important;
-    margin-left: 4px;
-    margin-right: 4px;
-    margin-top: 0px;
-    margin-bottom: 0px;
-    min-height: 28px !important;
-    max-height: 28px !important;
+    background-color: #e01b24 !important; border-radius: 999px !important;
+    padding-left: 10px !important; padding-right: 10px !important; margin-left: 4px; margin-right: 4px;
+    min-height: 28px !important; max-height: 28px !important;
 }
 .tb-rec-pill:hover { background-color: #c01c28 !important; }
 .tb-rec-icon { color: #ffffff !important; icon-size: 14px; }
 .tb-rec-label { color: #ffffff !important; font-weight: bold; font-size: 13px; }
 
-/* Ostrzeżenie o udostępnianiu ekranu (Screen Sharing) */
-.tb-share-btn .tb-btn-icon {
-    color: #ff7800 !important; /* Mocny pomarańczowy */
-}
-.tb-share-btn:hover {
-    background-color: rgba(255, 120, 0, 0.2) !important;
-}
-/* Pulsująca animacja udostępniania */
-.tb-share-btn {
-    animation: share-pulse 2s infinite;
-}
-@keyframes share-pulse {
-    0% { opacity: 0.7; }
-    50% { opacity: 1.0; }
-    100% { opacity: 0.7; }
-}
+.tb-share-btn .tb-btn-icon { color: #ff7800 !important; }
+.tb-share-btn:hover { background-color: rgba(255, 120, 0, 0.2) !important; }
+.tb-share-btn { animation: share-pulse 2s infinite; }
+@keyframes share-pulse { 0% { opacity: 0.7; } 50% { opacity: 1.0; } 100% { opacity: 0.7; } }
 
-/* ── Grupa systemowa ─────────────────────────────────────── */
-.tb-sys-group {
-    background-color : transparent;
-    border-radius    : 8px;
-    border-width     : 0px;
-    margin-top       : 0px;
-    margin-bottom    : 0px;
-    margin-left      : 4px;
-    margin-right     : 4px;
-    padding          : 0;
-}
-.tb-sys-cell {
-    min-width  : 30px;
-    min-height : 32px;
-    max-height : 32px;
-}
+.tb-sys-group { background-color : transparent; border-radius: 8px; border-width: 0px; margin-left: 4px; margin-right: 4px; padding: 0; }
+.tb-sys-cell { min-width : 30px; min-height : 32px; max-height : 32px; }
 .tb-sys-cell-icon { icon-size : 16px; color : rgba(210, 215, 240, 0.85); }
-.tb-sys-group:hover .tb-sys-cell-icon { color : #ffffff; }
 
-/* ── Ikony aplikacji i znaczniki ─────────────────────────── */
 .tb-apps { spacing : 2px; }
 .tb-dot { height : 3px; border-radius : 2px; margin-top : 1px; }
 .tb-sep { width : 1px; height : 22px; margin-left : 5px; margin-right : 5px; }
 
-/* ── Zegar i separatory ──────────────────────────────────── */
-.tb-clock {
-    spacing          : 0px;
-    min-width        : 50px;
-    max-width        : 70px;
-    padding-left     : 6px;
-    padding-right    : 6px;
-    margin-right     : 6px;
-}
+.tb-clock { spacing : 0px; min-width : 50px; max-width : 70px; padding-left : 6px; padding-right : 6px; margin-right : 6px; }
 .tb-clock-time { font-size : 13px; font-weight : bold; text-align : right; }
 .tb-clock-date { font-size : 9px; text-align : right; }
-.tb-clock-btn {
-    border-width     : 0px;
-    border-radius    : 7px;
-    background-color : transparent;
-    padding          : 0px;
-    x-expand         : false;
-    y-expand         : false;
-}
-.tb-notif-dot {
-    border-radius    : 4px;
-    border-width     : 1px;
-    border-color     : rgba(0,0,0,0.3);
-}
-.tb-arrow {
-    min-width        : 16px;
-    max-width        : 16px;
-    margin-left      : 0px;
-    margin-right     : 2px;
-    border-radius    : 5px;
-}
+.tb-clock-btn { border-width : 0px; border-radius : 7px; background-color : transparent; padding : 0px; }
+.tb-notif-dot { border-radius : 4px; border-width : 1px; border-color : rgba(0,0,0,0.3); }
+.tb-arrow { min-width : 16px; max-width : 16px; margin-right : 2px; border-radius : 5px; }
 
-/* ── Popupy (tray, preview) ──────────────────────────────── */
 .tb-tray-popup { border-radius : 10px; border-width : 1px; padding : 4px; }
-.tb-tray-cell { min-width : 30px; min-height : 32px; max-height : 32px; margin-left : 1px; margin-right : 1px; border-width : 0px; border-radius : 6px; background-color : transparent; }
+.tb-tray-cell { min-width: 30px; min-height: 32px; max-height: 32px; margin-left: 1px; margin-right: 1px; border-radius: 6px; background-color: transparent; }
 .tb-tray-cell-icon { icon-size : 16px; }
 .tb-tray-empty { font-size : 11px; padding-left : 10px; padding-right : 10px; padding-top : 6px; padding-bottom: 6px; }
 .tb-preview-popup { border-radius : 10px; border-width : 1px; padding : 6px; }
@@ -212,26 +83,24 @@
 .tb-preview-title { font-size : 9px; background-color : rgba(0, 0, 0, 0.55); padding-left : 6px; padding-right : 6px; padding-top : 2px; padding-bottom : 2px; border-radius : 3px; margin-top : 4px; }
 .tb-tooltip { border-width : 1px; border-style : solid; border-radius : 6px; padding-top : 4px; padding-bottom : 4px; padding-left : 10px; padding-right : 10px; font-size : 12px; }
 
-
 /* ==========================================================================
-   MOTYWY (8 Pełnych Motywów ze ZNACZNIKAMI DRAG&DROP)
+   MOTYWY (ZE ZGODNYMI KOLORAMI PO NAJECHANIU MYSZKĄ)
    ========================================================================== */
 
 /* 1. Cyberpunk */
 .bottom-taskbar.theme-cyberpunk { background-color: #0b0914; background-image: linear-gradient(180deg, #160f2e 0%, #0b0914 100%); }
 .theme-cyberpunk .tb-clock-time, .theme-cyberpunk .tb-clock-date, .theme-cyberpunk .tb-btn-icon, .theme-cyberpunk .tb-sys-cell-icon, .theme-cyberpunk .tb-kbd-label { color: #e2e8f0; }
 .theme-cyberpunk .tb-act-icon { color: #ff007f; }
-/* 🟢 FIX: .tb-drop-marker.theme-[nazwa] rozwiązuje problem widoczności nałożonego markera */
 .theme-cyberpunk .tb-dot, .theme-cyberpunk .tb-notif-dot, .tb-drop-marker.theme-cyberpunk { background-color: #ff007f; }
 .theme-cyberpunk .tb-sep { background-color: rgba(255, 255, 255, 0.1); }
 .theme-cyberpunk .tb-act-btn:hover, .theme-cyberpunk .tb-app-btn:hover, .theme-cyberpunk .tb-btn:hover, .theme-cyberpunk .tb-sys-group:hover, .theme-cyberpunk .tb-clock-btn:hover { background-color: rgba(255, 0, 127, 0.15) !important; }
-.theme-cyberpunk .tb-act-btn:active, .theme-cyberpunk .tb-app-btn:active, .theme-cyberpunk .tb-btn:active, .theme-cyberpunk .tb-sys-group:active, .theme-cyberpunk .tb-clock-btn:active { background-color: rgba(255, 0, 127, 0.25) !important; }
-.theme-cyberpunk .tb-app-btn.active { background-color: rgba(255, 0, 127, 0.2); }
-.theme-cyberpunk .tb-app-btn.running:hover, .theme-cyberpunk .tb-app-btn.active:hover { background-color: rgba(255, 0, 127, 0.3); }
 .tb-tray-popup.theme-cyberpunk, .tb-preview-popup.theme-cyberpunk { background-color: #110d18 !important; border-color: rgba(255, 0, 127, 0.3) !important; }
-.theme-cyberpunk .tb-tray-empty, .theme-cyberpunk .tb-tray-cell-icon, .theme-cyberpunk .tb-preview-title { color: #e2e8f0; }
 .theme-cyberpunk .tb-tray-cell:hover, .theme-cyberpunk .tb-preview-cell:hover { background-color: rgba(255, 0, 127, 0.15); }
+.theme-cyberpunk .tb-tray-empty, .theme-cyberpunk .tb-tray-cell-icon, .theme-cyberpunk .tb-preview-title { color: #e2e8f0; }
 .tb-tooltip.theme-cyberpunk { background-color: #160f2e; color: #ff007f; border-color: #ff007f; }
+/* Unifikacja kolorów ikon i zegara po najechaniu (brak różnic) */
+.theme-cyberpunk .tb-act-btn:hover .tb-act-icon { color: #ff007f !important; }
+.theme-cyberpunk .tb-btn:hover .tb-btn-icon, .theme-cyberpunk .tb-sys-group:hover .tb-sys-cell-icon, .theme-cyberpunk .tb-clock-btn:hover .tb-clock-time, .theme-cyberpunk .tb-clock-btn:hover .tb-clock-date, .theme-cyberpunk .tb-btn:hover .tb-kbd-label, .theme-cyberpunk .tb-tray-cell:hover .tb-tray-cell-icon { color: #e2e8f0 !important; }
 
 /* 2. Dracula */
 .bottom-taskbar.theme-dracula { background-color: #282a36; background-image: linear-gradient(180deg, #282a36 0%, #1e1f29 100%); }
@@ -240,13 +109,13 @@
 .theme-dracula .tb-dot, .theme-dracula .tb-notif-dot, .tb-drop-marker.theme-dracula { background-color: #ff79c6; }
 .theme-dracula .tb-sep { background-color: rgba(248, 248, 242, 0.1); }
 .theme-dracula .tb-act-btn:hover, .theme-dracula .tb-app-btn:hover, .theme-dracula .tb-btn:hover, .theme-dracula .tb-sys-group:hover, .theme-dracula .tb-clock-btn:hover { background-color: rgba(189, 147, 249, 0.15) !important; }
-.theme-dracula .tb-act-btn:active, .theme-dracula .tb-app-btn:active, .theme-dracula .tb-btn:active, .theme-dracula .tb-sys-group:active, .theme-dracula .tb-clock-btn:active { background-color: rgba(189, 147, 249, 0.25) !important; }
-.theme-dracula .tb-app-btn.active { background-color: rgba(189, 147, 249, 0.2); }
-.theme-dracula .tb-app-btn.running:hover, .theme-dracula .tb-app-btn.active:hover { background-color: rgba(189, 147, 249, 0.3); }
 .tb-tray-popup.theme-dracula, .tb-preview-popup.theme-dracula { background-color: #282a36 !important; border-color: rgba(189, 147, 249, 0.3) !important; }
-.theme-dracula .tb-tray-empty, .theme-dracula .tb-tray-cell-icon, .theme-dracula .tb-preview-title { color: #f8f8f2; }
 .theme-dracula .tb-tray-cell:hover, .theme-dracula .tb-preview-cell:hover { background-color: rgba(189, 147, 249, 0.15); }
+.theme-dracula .tb-tray-empty, .theme-dracula .tb-tray-cell-icon, .theme-dracula .tb-preview-title { color: #f8f8f2; }
 .tb-tooltip.theme-dracula { background-color: #1e1f29; color: #f8f8f2; border-color: #bd93f9; }
+/* Unifikacja kolorów */
+.theme-dracula .tb-act-btn:hover .tb-act-icon { color: #bd93f9 !important; }
+.theme-dracula .tb-btn:hover .tb-btn-icon, .theme-dracula .tb-sys-group:hover .tb-sys-cell-icon, .theme-dracula .tb-clock-btn:hover .tb-clock-time, .theme-dracula .tb-clock-btn:hover .tb-clock-date, .theme-dracula .tb-btn:hover .tb-kbd-label, .theme-dracula .tb-tray-cell:hover .tb-tray-cell-icon { color: #f8f8f2 !important; }
 
 /* 3. Ubuntu Yaru */
 .bottom-taskbar.theme-ubuntu-yaru { background-color: #1f1f1f; background-image: linear-gradient(180deg, #2c2c2c 0%, #1f1f1f 100%); }
@@ -255,13 +124,13 @@
 .theme-ubuntu-yaru .tb-dot, .theme-ubuntu-yaru .tb-notif-dot, .tb-drop-marker.theme-ubuntu-yaru { background-color: #e95420; }
 .theme-ubuntu-yaru .tb-sep { background-color: rgba(255, 255, 255, 0.1); }
 .theme-ubuntu-yaru .tb-act-btn:hover, .theme-ubuntu-yaru .tb-app-btn:hover, .theme-ubuntu-yaru .tb-btn:hover, .theme-ubuntu-yaru .tb-sys-group:hover, .theme-ubuntu-yaru .tb-clock-btn:hover { background-color: rgba(233, 84, 32, 0.15) !important; }
-.theme-ubuntu-yaru .tb-act-btn:active, .theme-ubuntu-yaru .tb-app-btn:active, .theme-ubuntu-yaru .tb-btn:active, .theme-ubuntu-yaru .tb-sys-group:active, .theme-ubuntu-yaru .tb-clock-btn:active { background-color: rgba(233, 84, 32, 0.25) !important; }
-.theme-ubuntu-yaru .tb-app-btn.active { background-color: rgba(233, 84, 32, 0.2); }
-.theme-ubuntu-yaru .tb-app-btn.running:hover, .theme-ubuntu-yaru .tb-app-btn.active:hover { background-color: rgba(233, 84, 32, 0.3); }
 .tb-tray-popup.theme-ubuntu-yaru, .tb-preview-popup.theme-ubuntu-yaru { background-color: #2c2c2c !important; border-color: rgba(233, 84, 32, 0.3) !important; }
-.theme-ubuntu-yaru .tb-tray-empty, .theme-ubuntu-yaru .tb-tray-cell-icon, .theme-ubuntu-yaru .tb-preview-title { color: #f7f7f7; }
 .theme-ubuntu-yaru .tb-tray-cell:hover, .theme-ubuntu-yaru .tb-preview-cell:hover { background-color: rgba(233, 84, 32, 0.15); }
+.theme-ubuntu-yaru .tb-tray-empty, .theme-ubuntu-yaru .tb-tray-cell-icon, .theme-ubuntu-yaru .tb-preview-title { color: #f7f7f7; }
 .tb-tooltip.theme-ubuntu-yaru { background-color: #1f1f1f; color: #f7f7f7; border-color: #e95420; }
+/* Unifikacja kolorów */
+.theme-ubuntu-yaru .tb-act-btn:hover .tb-act-icon { color: #e95420 !important; }
+.theme-ubuntu-yaru .tb-btn:hover .tb-btn-icon, .theme-ubuntu-yaru .tb-sys-group:hover .tb-sys-cell-icon, .theme-ubuntu-yaru .tb-clock-btn:hover .tb-clock-time, .theme-ubuntu-yaru .tb-clock-btn:hover .tb-clock-date, .theme-ubuntu-yaru .tb-btn:hover .tb-kbd-label, .theme-ubuntu-yaru .tb-tray-cell:hover .tb-tray-cell-icon { color: #f7f7f7 !important; }
 
 /* 4. Gruvbox */
 .bottom-taskbar.theme-gruvbox { background-color: #282828; background-image: linear-gradient(180deg, #32302f 0%, #282828 100%); }
@@ -270,13 +139,13 @@
 .theme-gruvbox .tb-dot, .theme-gruvbox .tb-notif-dot, .tb-drop-marker.theme-gruvbox { background-color: #fabd2f; }
 .theme-gruvbox .tb-sep { background-color: rgba(235, 219, 178, 0.1); }
 .theme-gruvbox .tb-act-btn:hover, .theme-gruvbox .tb-app-btn:hover, .theme-gruvbox .tb-btn:hover, .theme-gruvbox .tb-sys-group:hover, .theme-gruvbox .tb-clock-btn:hover { background-color: rgba(184, 187, 38, 0.15) !important; }
-.theme-gruvbox .tb-act-btn:active, .theme-gruvbox .tb-app-btn:active, .theme-gruvbox .tb-btn:active, .theme-gruvbox .tb-sys-group:active, .theme-gruvbox .tb-clock-btn:active { background-color: rgba(184, 187, 38, 0.25) !important; }
-.theme-gruvbox .tb-app-btn.active { background-color: rgba(184, 187, 38, 0.15); }
-.theme-gruvbox .tb-app-btn.running:hover, .theme-gruvbox .tb-app-btn.active:hover { background-color: rgba(184, 187, 38, 0.25); }
 .tb-tray-popup.theme-gruvbox, .tb-preview-popup.theme-gruvbox { background-color: #32302f !important; border-color: rgba(184, 187, 38, 0.3) !important; }
-.theme-gruvbox .tb-tray-empty, .theme-gruvbox .tb-tray-cell-icon, .theme-gruvbox .tb-preview-title { color: #ebdbb2; }
 .theme-gruvbox .tb-tray-cell:hover, .theme-gruvbox .tb-preview-cell:hover { background-color: rgba(184, 187, 38, 0.15); }
+.theme-gruvbox .tb-tray-empty, .theme-gruvbox .tb-tray-cell-icon, .theme-gruvbox .tb-preview-title { color: #ebdbb2; }
 .tb-tooltip.theme-gruvbox { background-color: #282828; color: #ebdbb2; border-color: #b8bb26; }
+/* Unifikacja kolorów */
+.theme-gruvbox .tb-act-btn:hover .tb-act-icon { color: #b8bb26 !important; }
+.theme-gruvbox .tb-btn:hover .tb-btn-icon, .theme-gruvbox .tb-sys-group:hover .tb-sys-cell-icon, .theme-gruvbox .tb-clock-btn:hover .tb-clock-time, .theme-gruvbox .tb-clock-btn:hover .tb-clock-date, .theme-gruvbox .tb-btn:hover .tb-kbd-label, .theme-gruvbox .tb-tray-cell:hover .tb-tray-cell-icon { color: #ebdbb2 !important; }
 
 /* 5. Nordic */
 .bottom-taskbar.theme-nordic { background-color: #2e3440; background-image: linear-gradient(180deg, #3b4252 0%, #2e3440 100%); }
@@ -285,45 +154,44 @@
 .theme-nordic .tb-dot, .theme-nordic .tb-notif-dot, .tb-drop-marker.theme-nordic { background-color: #88c0d0; }
 .theme-nordic .tb-sep { background-color: rgba(236, 239, 244, 0.1); }
 .theme-nordic .tb-act-btn:hover, .theme-nordic .tb-app-btn:hover, .theme-nordic .tb-btn:hover, .theme-nordic .tb-sys-group:hover, .theme-nordic .tb-clock-btn:hover { background-color: rgba(136, 192, 208, 0.15) !important; }
-.theme-nordic .tb-act-btn:active, .theme-nordic .tb-app-btn:active, .theme-nordic .tb-btn:active, .theme-nordic .tb-sys-group:active, .theme-nordic .tb-clock-btn:active { background-color: rgba(136, 192, 208, 0.25) !important; }
-.theme-nordic .tb-app-btn.active { background-color: rgba(129, 161, 193, 0.25); }
-.theme-nordic .tb-app-btn.running:hover, .theme-nordic .tb-app-btn.active:hover { background-color: rgba(129, 161, 193, 0.35); }
 .tb-tray-popup.theme-nordic, .tb-preview-popup.theme-nordic { background-color: #3b4252 !important; border-color: rgba(136, 192, 208, 0.3) !important; }
-.theme-nordic .tb-tray-empty, .theme-nordic .tb-tray-cell-icon, .theme-nordic .tb-preview-title { color: #eceff4; }
 .theme-nordic .tb-tray-cell:hover, .theme-nordic .tb-preview-cell:hover { background-color: rgba(136, 192, 208, 0.15); }
+.theme-nordic .tb-tray-empty, .theme-nordic .tb-tray-cell-icon, .theme-nordic .tb-preview-title { color: #eceff4; }
 .tb-tooltip.theme-nordic { background-color: #2e3440; color: #eceff4; border-color: #88c0d0; }
+/* Unifikacja kolorów */
+.theme-nordic .tb-act-btn:hover .tb-act-icon { color: #88c0d0 !important; }
+.theme-nordic .tb-btn:hover .tb-btn-icon, .theme-nordic .tb-sys-group:hover .tb-sys-cell-icon, .theme-nordic .tb-clock-btn:hover .tb-clock-time, .theme-nordic .tb-clock-btn:hover .tb-clock-date, .theme-nordic .tb-btn:hover .tb-kbd-label, .theme-nordic .tb-tray-cell:hover .tb-tray-cell-icon { color: #eceff4 !important; }
 
-/* 6. Solid Dark (Onyx Black) */
+/* 6. Solid Dark */
 .bottom-taskbar.theme-solid-dark { background-color: #000000; background-image: none; }
 .theme-solid-dark .tb-clock-time, .theme-solid-dark .tb-clock-date, .theme-solid-dark .tb-btn-icon, .theme-solid-dark .tb-sys-cell-icon, .theme-solid-dark .tb-kbd-label { color: #ffffff; }
 .theme-solid-dark .tb-act-icon { color: #ffffff; }
 .theme-solid-dark .tb-dot, .theme-solid-dark .tb-notif-dot, .tb-drop-marker.theme-solid-dark { background-color: #ffffff; }
 .theme-solid-dark .tb-sep { background-color: rgba(255, 255, 255, 0.15); }
 .theme-solid-dark .tb-act-btn:hover, .theme-solid-dark .tb-app-btn:hover, .theme-solid-dark .tb-btn:hover, .theme-solid-dark .tb-sys-group:hover, .theme-solid-dark .tb-clock-btn:hover { background-color: rgba(255, 255, 255, 0.15) !important; }
-.theme-solid-dark .tb-act-btn:active, .theme-solid-dark .tb-app-btn:active, .theme-solid-dark .tb-btn:active, .theme-solid-dark .tb-sys-group:active, .theme-solid-dark .tb-clock-btn:active { background-color: rgba(255, 255, 255, 0.25) !important; }
-.theme-solid-dark .tb-app-btn.active { background-color: rgba(255, 255, 255, 0.2); }
-.theme-solid-dark .tb-app-btn.running:hover, .theme-solid-dark .tb-app-btn.active:hover { background-color: rgba(255, 255, 255, 0.3); }
 .tb-tray-popup.theme-solid-dark, .tb-preview-popup.theme-solid-dark { background-color: #0f0f0f !important; border-color: rgba(255, 255, 255, 0.15) !important; }
-.theme-solid-dark .tb-tray-empty, .theme-solid-dark .tb-tray-cell-icon, .theme-solid-dark .tb-preview-title { color: #ffffff; }
 .theme-solid-dark .tb-tray-cell:hover, .theme-solid-dark .tb-preview-cell:hover { background-color: rgba(255, 255, 255, 0.15); }
+.theme-solid-dark .tb-tray-empty, .theme-solid-dark .tb-tray-cell-icon, .theme-solid-dark .tb-preview-title { color: #ffffff; }
 .tb-tooltip.theme-solid-dark { background-color: #000000; color: #ffffff; border-color: #ffffff; }
+/* Unifikacja kolorów */
+.theme-solid-dark .tb-act-btn:hover .tb-act-icon { color: #ffffff !important; }
+.theme-solid-dark .tb-btn:hover .tb-btn-icon, .theme-solid-dark .tb-sys-group:hover .tb-sys-cell-icon, .theme-solid-dark .tb-clock-btn:hover .tb-clock-time, .theme-solid-dark .tb-clock-btn:hover .tb-clock-date, .theme-solid-dark .tb-btn:hover .tb-kbd-label, .theme-solid-dark .tb-tray-cell:hover .tb-tray-cell-icon { color: #ffffff !important; }
 
-/* 7. Solid Light (Monolityczny Jasny) */
+/* 7. Solid Light */
 .bottom-taskbar.theme-solid-light { background-color: #f5f5f7; background-image: none; }
 .theme-solid-light .tb-clock-time, .theme-solid-light .tb-clock-date, .theme-solid-light .tb-btn-icon, .theme-solid-light .tb-sys-cell-icon, .theme-solid-light .tb-act-icon, .theme-solid-light .tb-kbd-label { color: #1c1c1e !important; }
 .theme-solid-light .tb-dot, .theme-solid-light .tb-notif-dot, .tb-drop-marker.theme-solid-light { background-color: #1c1c1e !important; }
 .theme-solid-light .tb-sep { background-color: rgba(0, 0, 0, 0.15) !important; }
-.theme-solid-light .tb-act-btn:hover .tb-act-icon, .theme-solid-light .tb-app-btn:hover .tb-app-icon, .theme-solid-light .tb-btn:hover .tb-btn-icon, .theme-solid-light .tb-sys-group:hover .tb-sys-cell-icon, .theme-solid-light .tb-clock-btn:hover .tb-clock-time, .theme-solid-light .tb-clock-btn:hover .tb-clock-date, .theme-solid-light .tb-btn:hover .tb-kbd-label { color: #000000 !important; }
 .theme-solid-light .tb-act-btn:hover, .theme-solid-light .tb-app-btn:hover, .theme-solid-light .tb-btn:hover, .theme-solid-light .tb-sys-group:hover, .theme-solid-light .tb-clock-btn:hover, .theme-solid-light .tb-app-btn.running:hover, .theme-solid-light .tb-tray-cell:hover, .theme-solid-light .tb-preview-cell:hover { background-color: rgba(0, 0, 0, 0.08) !important; }
-.theme-solid-light .tb-act-btn:active, .theme-solid-light .tb-app-btn:active, .theme-solid-light .tb-btn:active, .theme-solid-light .tb-sys-group:active, .theme-solid-light .tb-clock-btn:active, .theme-solid-light .tb-tray-cell:active, .theme-solid-light .tb-preview-cell:active { background-color: rgba(0, 0, 0, 0.15) !important; }
-.theme-solid-light .tb-app-btn.active { background-color: rgba(0, 0, 0, 0.12) !important; }
-.theme-solid-light .tb-app-btn.active:hover { background-color: rgba(0, 0, 0, 0.18) !important; }
 .tb-tray-popup.theme-solid-light, .tb-preview-popup.theme-solid-light { background-color: rgba(242, 242, 247, 0.96) !important; border-color: rgba(0, 0, 0, 0.15) !important; }
 .theme-solid-light .tb-tray-empty, .theme-solid-light .tb-tray-cell-icon, .theme-solid-light .tb-preview-title { color: #1c1c1e !important; }
 .tb-preview-popup.theme-solid-light .tb-preview-title { background-color: rgba(255, 255, 255, 0.85) !important; border: 1px solid rgba(0, 0, 0, 0.1) !important; }
 .tb-tooltip.theme-solid-light { background-color: #ffffff !important; color: #1c1c1e !important; border: 1px solid rgba(0, 0, 0, 0.15) !important; }
+/* Unifikacja kolorów */
+.theme-solid-light .tb-act-btn:hover .tb-act-icon { color: #000000 !important; }
+.theme-solid-light .tb-btn:hover .tb-btn-icon, .theme-solid-light .tb-sys-group:hover .tb-sys-cell-icon, .theme-solid-light .tb-clock-btn:hover .tb-clock-time, .theme-solid-light .tb-clock-btn:hover .tb-clock-date, .theme-solid-light .tb-btn:hover .tb-kbd-label, .theme-solid-light .tb-tray-cell:hover .tb-tray-cell-icon { color: #1c1c1e !important; }
 
-/* 8. GNOME Dark (Domyślny ciemny systemowy) */
+/* 8. GNOME Dark */
 .bottom-taskbar.theme-gnome-dark { background-color: rgba(28, 28, 28, 0.95); background-image: none; }
 .theme-gnome-dark .tb-clock-time, .theme-gnome-dark .tb-clock-date, .theme-gnome-dark .tb-btn-icon, .theme-gnome-dark .tb-sys-cell-icon, .theme-gnome-dark .tb-kbd-label { color: #eeeeec; }
 .theme-gnome-dark .tb-act-icon { color: #eeeeec; }
@@ -331,10 +199,10 @@
 .theme-gnome-dark .tb-notif-dot, .tb-drop-marker.theme-gnome-dark { background-color: #3584e4; }
 .theme-gnome-dark .tb-sep { background-color: rgba(255, 255, 255, 0.1); }
 .theme-gnome-dark .tb-act-btn:hover, .theme-gnome-dark .tb-app-btn:hover, .theme-gnome-dark .tb-btn:hover, .theme-gnome-dark .tb-sys-group:hover, .theme-gnome-dark .tb-clock-btn:hover { background-color: rgba(255, 255, 255, 0.1) !important; }
-.theme-gnome-dark .tb-act-btn:active, .theme-gnome-dark .tb-app-btn:active, .theme-gnome-dark .tb-btn:active, .theme-gnome-dark .tb-sys-group:active, .theme-gnome-dark .tb-clock-btn:active { background-color: rgba(255, 255, 255, 0.15) !important; }
-.theme-gnome-dark .tb-app-btn.active { background-color: rgba(255, 255, 255, 0.12); }
-.theme-gnome-dark .tb-app-btn.running:hover, .theme-gnome-dark .tb-app-btn.active:hover { background-color: rgba(255, 255, 255, 0.18); }
 .tb-tray-popup.theme-gnome-dark, .tb-preview-popup.theme-gnome-dark { background-color: #242424 !important; border-color: rgba(255, 255, 255, 0.1) !important; }
-.theme-gnome-dark .tb-tray-empty, .theme-gnome-dark .tb-tray-cell-icon, .theme-gnome-dark .tb-preview-title { color: #eeeeec; }
 .theme-gnome-dark .tb-tray-cell:hover, .theme-gnome-dark .tb-preview-cell:hover { background-color: rgba(255, 255, 255, 0.1); }
+.theme-gnome-dark .tb-tray-empty, .theme-gnome-dark .tb-tray-cell-icon, .theme-gnome-dark .tb-preview-title { color: #eeeeec; }
 .tb-tooltip.theme-gnome-dark { background-color: #242424; color: #eeeeec; border-color: rgba(255, 255, 255, 0.1); }
+/* Unifikacja kolorów */
+.theme-gnome-dark .tb-act-btn:hover .tb-act-icon { color: #3584e4 !important; }
+.theme-gnome-dark .tb-btn:hover .tb-btn-icon, .theme-gnome-dark .tb-sys-group:hover .tb-sys-cell-icon, .theme-gnome-dark .tb-clock-btn:hover .tb-clock-time, .theme-gnome-dark .tb-clock-btn:hover .tb-clock-date, .theme-gnome-dark .tb-btn:hover .tb-kbd-label, .theme-gnome-dark .tb-tray-cell:hover .tb-tray-cell-icon { color: #eeeeec !important; }

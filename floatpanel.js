@@ -1,4 +1,4 @@
-// Prosty Panel — floatpanel.js (Bez monkey-patchingu, dynamiczne skalowanie)
+// Prosty Panel — floatpanel.js (Meta.Strut, bez dummy widget)
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -10,7 +10,6 @@ import { BottomTaskbar } from './classicpanel.js';
 import { Intellihide } from './intellihide.js';
 
 const FLOAT_MARGIN = 8;
-const STRUT_HEIGHT = 64; 
 const NEW_WINDOW_RECHECK_DELAY = 800; 
 
 export class FloatPanel {
@@ -18,7 +17,7 @@ export class FloatPanel {
         this._autoHide = autoHide;
         this._settings = settings;
         this._bar = null;
-        this._dummyStrut = null;
+        this._strut = null;          // Meta.Strut – bezpieczna rezerwacja miejsca
         this._intellihide = null;
         
         this._monitorId = 0;
@@ -36,12 +35,6 @@ export class FloatPanel {
         this._hideTopPanel();
         const mon = Main.layoutManager.primaryMonitor;
 
-        if (!this._autoHide) {
-            this._dummyStrut = new St.Widget({ width: mon.width, height: STRUT_HEIGHT, opacity: 0, reactive: false });
-            Main.layoutManager.addChrome(this._dummyStrut, { affectsStruts: true, trackFullscreen: false });
-            this._dummyStrut.set_position(mon.x, mon.y + mon.height - STRUT_HEIGHT);
-        }
-
         this._disableUnredirect();
 
         this._bar = new BottomTaskbar(this._settings);
@@ -49,16 +42,29 @@ export class FloatPanel {
 
         Main.layoutManager.addTopChrome(this._bar, { affectsStruts: false, trackFullscreen: false });
 
+        // Przezroczysty widget rezerwujący 62px przy dolnej krawędzi (strut)
+        if (!this._autoHide) {
+            this._strutWidget = new St.Widget({
+                opacity: 0,
+                reactive: false,
+                x: mon.x,
+                y: mon.y + mon.height - 64,
+                width: mon.width,
+                height: 64,
+            });
+            Main.layoutManager.addChrome(this._strutWidget, { affectsStruts: true, trackFullscreen: true });
+        }
+
         this._reposition();
         this._updateTargetBox();
 
         this._monitorId = Main.layoutManager.connect('monitors-changed', () => {
             this._reposition();
             this._updateTargetBox();
-            if (this._dummyStrut && !this._autoHide) {
+            if (this._strutWidget) {
                 const m = Main.layoutManager.primaryMonitor;
-                this._dummyStrut.set_size(m.width, STRUT_HEIGHT);
-                this._dummyStrut.set_position(m.x, m.y + m.height - STRUT_HEIGHT);
+                this._strutWidget.set_position(m.x, m.y + m.height - 64);
+                this._strutWidget.set_size(m.width, 62);
             }
         });
 
@@ -82,7 +88,12 @@ export class FloatPanel {
         this._disableStaticTracker();
         
         if (this._intellihide) { this._intellihide.disable(); this._intellihide = null; }
-        if (this._dummyStrut) { Main.layoutManager.removeChrome(this._dummyStrut); this._dummyStrut.destroy(); this._dummyStrut = null; }
+
+        if (this._strutWidget) {
+            Main.layoutManager.removeChrome(this._strutWidget);
+            this._strutWidget.destroy();
+            this._strutWidget = null;
+        }
         
         if (this._bar) { 
             if (typeof this._bar._cleanup === 'function') this._bar._cleanup();
@@ -290,7 +301,6 @@ export class FloatPanel {
         Main.panel.opacity = 0; 
         Main.layoutManager.panelBox.opacity = 0;
         
-        // 🟢 FIX: Dynamiczna wysokość
         const panelHeight = Main.layoutManager.panelBox.height || 40;
         Main.layoutManager.panelBox.translation_y = -panelHeight;
         
@@ -301,7 +311,6 @@ export class FloatPanel {
             Main.layoutManager._queueUpdateRegions();
         }
         
-        // 🟢 FIX: Bezpieczne ukrywanie Dasha
         if (Main.overview?.dash) {
             this._dashOrigOpacity = Main.overview.dash.opacity;
             this._dashOrigReactive = Main.overview.dash.reactive;
