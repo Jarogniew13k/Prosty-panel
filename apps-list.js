@@ -1,4 +1,4 @@
-// Prosty Panel — apps-list.js (GNOME 45+ Ready, connectObject)
+// Prosty Panel — apps-list.js (GNOME 45+ Ready, connectObject, Naprawiony błąd "Detached actors")
 
 import St      from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -53,7 +53,6 @@ export function buildAppsList(host) {
 
     const rebuildApps = () => {
         if (host._panelDestroyed) return;
-        try { appBox.get_children(); } catch (e) { return; }
 
         const favs    = AppFavorites.getAppFavorites().getFavorites();
         const running = Shell.AppSystem.get_default().get_running();
@@ -76,27 +75,44 @@ export function buildAppsList(host) {
         }
 
         const toKeep = new Set();
-        const addBtn = (app) => {
-            const id = app.get_id();
-            toKeep.add(id);
-            if (!host._buttons.has(id)) {
-                const btn = new AppButton(app);
-                host._buttons.set(id, btn);
-            }
-            try { appBox.add_child(host._buttons.get(id)); } catch(e) {}
-        };
+        for (const app of favs) toKeep.add(app.get_id());
+        for (const app of orderedRun) toKeep.add(app.get_id());
 
-        try { appBox.remove_all_children(); } catch(e) {}
-        for (const app of favs) addBtn(app);
-        for (const app of orderedRun) addBtn(app);
-
+        // 1. Bezpiecznie niszczymy tylko NIEPOTRZEBNE przyciski aplikacji
         for (const [id, btn] of host._buttons.entries()) {
             if (!toKeep.has(id)) {
                 if (typeof btn._cleanup === 'function') btn._cleanup();
-                try { btn.remove_all_transitions(); btn.destroy(); } catch(e) {}
+                try { btn.remove_all_transitions(); } catch(e) {}
+                try { btn.destroy(); } catch(e) {}
                 host._buttons.delete(id);
             }
         }
+
+        // 2. Dodajemy lub PRZESUWAMY pozostałe przyciski (zapobiega to usuwaniu ich ze sceny)
+        let childIndex = 0;
+        const addOrSortBtn = (app) => {
+            const id = app.get_id();
+            let btn = host._buttons.get(id);
+            
+            if (!btn) {
+                btn = new AppButton(app);
+                host._buttons.set(id, btn);
+                try { appBox.insert_child_at_index(btn, childIndex); } catch(e) {}
+            } else {
+                try {
+                    if (btn.get_parent() === appBox) {
+                        appBox.set_child_at_index(btn, childIndex);
+                    } else {
+                        appBox.insert_child_at_index(btn, childIndex);
+                    }
+                } catch(e) {}
+            }
+            childIndex++;
+        };
+
+        for (const app of favs) addOrSortBtn(app);
+        for (const app of orderedRun) addOrSortBtn(app);
+
         updateStates();
     };
 
@@ -115,6 +131,20 @@ export function buildAppsList(host) {
         }
     };
 
+    // Debounce dla rebuildApps: wiele szybkich sygnałów (app-state-changed, changed,
+    // window-created) składa się w jedno wywołanie po 100 ms. rebuildApps() pozostaje
+    // dostępne do bezpośredniego wywołania tam, gdzie wymagana jest natychmiastowa
+    // przebudowa (reorder-running, startup).
+    let _rebuildDebounceId = 0;
+    const queueRebuildApps = () => {
+        if (_rebuildDebounceId) return;
+        _rebuildDebounceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+            _rebuildDebounceId = 0;
+            rebuildApps();
+            return GLib.SOURCE_REMOVE;
+        });
+    };
+
     const connectSignals = () => {
         const sys     = Shell.AppSystem.get_default();
         const tracker = Shell.WindowTracker.get_default();
@@ -122,16 +152,17 @@ export function buildAppsList(host) {
         const wm      = global.window_manager;
         const display = global.display;
 
-        // 🟢 Użycie natywnego connectObject - całkowite usunięcie ręcznych tablic
-        sys.connectObject('app-state-changed', () => rebuildApps(), appBox);
+        sys.connectObject('app-state-changed', () => queueRebuildApps(), appBox);
         tracker.connectObject('notify::focus-app', () => updateStates(), appBox);
-        favs.connectObject('changed', () => rebuildApps(), appBox);
+        favs.connectObject('changed', () => queueRebuildApps(), appBox);
         
         display.connectObject('window-created', () => {
-            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => { 
-                if (host._panelDestroyed) return GLib.SOURCE_REMOVE; 
-                rebuildApps(); 
-                return GLib.SOURCE_REMOVE; 
+            // idle_add gwarantuje że okno jest zmapowane przed przebudową;
+            // queueRebuildApps scala kolejne idle'e w jedno wywołanie.
+            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                if (host._panelDestroyed) return GLib.SOURCE_REMOVE;
+                queueRebuildApps();
+                return GLib.SOURCE_REMOVE;
             });
         }, appBox);
         
@@ -145,12 +176,13 @@ export function buildAppsList(host) {
             if (idx !== -1) {
                 host._runOrder.splice(idx, 1);
                 host._runOrder.splice(pos, 0, appId);
-                rebuildApps();
+                rebuildApps(); // natychmiastowa przebudowa — jawna akcja użytkownika
             }
         }, appBox);
     };
 
     appBox._cleanup = () => {
+        if (_rebuildDebounceId) { GLib.source_remove(_rebuildDebounceId); _rebuildDebounceId = 0; }
         for (const [id, btn] of host._buttons.entries()) {
             if (typeof btn._cleanup === 'function') btn._cleanup();
         }

@@ -1,4 +1,4 @@
-// Prosty Panel — intellihide.js (Wyciszony GSignal + Blokada Tacy)
+// Prosty Panel — intellihide.js (Z bezpiecznym omijaniem błędu G_IS_OBJECT)
 
 import Clutter from 'gi://Clutter';
 import GLib    from 'gi://GLib';
@@ -34,17 +34,16 @@ export const Intellihide = GObject.registerClass({
         this._proximityOverlap = false;
         this._enabled          = false;
         this._targetBox        = null;
-        this._blocked          = false; // 🟢 FIX: Flaga blokująca autoukrywanie (dla dymka tacy)
+        this._blocked          = false; 
 
         this._hideTimer       = null;
         this._showTimer       = null;
         this._pointerWatchId  = 0;
 
-        this._generalSignals  = [];
+        // POWRÓT: Używamy niezawodnej Mapy do trzymania ID sygnałów z Meta.Window
         this._trackedWindows  = new Map(); 
-
-        this._checkDebounceId    = 0;
-        this._newWinRecheckId    = 0;
+        this._checkDebounceId = 0;
+        this._newWinRecheckId = 0;
     }
 
     updateTargetBox(box) {
@@ -52,7 +51,6 @@ export const Intellihide = GObject.registerClass({
         if (this._enabled) this._queueProximityCheck();
     }
 
-    // 🟢 METODY BLOKOWANIA (Wymagane przez tray-popup.js)
     block() {
         this._blocked = true;
         this._updatePanelVisibility(true);
@@ -75,24 +73,33 @@ export const Intellihide = GObject.registerClass({
 
         this._pointerWatchId = PointerWatcher.getPointerWatcher().addWatch(CHECK_POINTER_MS, (x, y) => this._onPointerMove(x, y));
 
-        const bind = (obj, sig, cb) => {
-            const id = obj.connect(sig, cb);
-            this._generalSignals.push({ obj, id });
-        };
+        // Clutter i UI wspierają connectObject bezbłędnie
+        this._taskbar.connectObject(
+            'menu-opened', () => this.revealAndHold(),
+            'menu-closed', () => this.release(),
+            'drag-start',  () => this.revealAndHold(true),
+            'drag-end',    () => this.release(),
+            this
+        );
 
-        bind(this._taskbar, 'menu-opened', () => this.revealAndHold());
-        bind(this._taskbar, 'menu-closed', () => this.release());
-        bind(this._taskbar, 'drag-start',  () => this.revealAndHold(true));
-        bind(this._taskbar, 'drag-end',    () => this.release());
+        Main.overview.connectObject(
+            'showing', () => { if (this._enabled) this._updatePanelVisibility(true); },
+            'hidden',  () => { this._queueProximityCheck(); if (this._enabled) this._updatePanelVisibility(false); },
+            this
+        );
 
-        bind(Main.overview, 'showing', () => { if (this._enabled) this._updatePanelVisibility(true); });
-        bind(Main.overview, 'hidden', () => { this._queueProximityCheck(); if (this._enabled) this._updatePanelVisibility(false); });
+        global.display.connectObject(
+            'notify::focus-window', () => { this._rebuildTrackedWindows(); this._queueProximityCheck(); },
+            'window-created', (_dpy, win) => { this._onWindowCreated(win); },
+            'restacked', () => this._queueProximityCheck(),
+            this
+        );
 
-        bind(global.display, 'notify::focus-window', () => { this._rebuildTrackedWindows(); this._queueProximityCheck(); });
-        bind(global.display, 'window-created', (_dpy, win) => { this._onWindowCreated(win); });
-        bind(global.display, 'restacked', () => this._queueProximityCheck());
-        bind(global.window_manager, 'switch-workspace', () => { this._rebuildTrackedWindows(); this._queueProximityCheck(); });
-        bind(global.window_manager, 'map', (_wm, _actor) => { this._rebuildTrackedWindows(); this._queueProximityCheck(); });
+        global.window_manager.connectObject(
+            'switch-workspace', () => { this._rebuildTrackedWindows(); this._queueProximityCheck(); },
+            'map', (_wm, _actor) => { this._rebuildTrackedWindows(); this._queueProximityCheck(); },
+            this
+        );
 
         this._rebuildTrackedWindows();
         this._updatePanelVisibility(true);
@@ -109,14 +116,11 @@ export const Intellihide = GObject.registerClass({
         if (this._checkDebounceId)  { GLib.source_remove(this._checkDebounceId);  this._checkDebounceId = 0; }
         if (this._newWinRecheckId)  { GLib.source_remove(this._newWinRecheckId);  this._newWinRecheckId = 0; }
 
-        for (const sig of this._generalSignals) { 
-            try { 
-                if (sig.obj && GObject.signal_handler_is_connected(sig.obj, sig.id)) {
-                    sig.obj.disconnect(sig.id); 
-                }
-            } catch (e) {} 
-        }
-        this._generalSignals = [];
+        try { this._taskbar?.disconnectObject(this); } catch(e) {}
+        try { Main.overview?.disconnectObject(this); } catch(e) {}
+        try { global.display?.disconnectObject(this); } catch(e) {}
+        try { global.window_manager?.disconnectObject(this); } catch(e) {}
+
         this._clearAllTrackedWindows();
 
         this._panel.remove_all_transitions();
@@ -147,6 +151,7 @@ export const Intellihide = GObject.registerClass({
         const ws = global.workspace_manager.get_active_workspace();
         const current = new Set(ws.list_windows());
 
+        // Bezpieczna iteracja po Map z tablicami ID
         for (const [win, ids] of this._trackedWindows) {
             if (!current.has(win)) {
                 this._untrackWindow(win, ids);
@@ -158,12 +163,20 @@ export const Intellihide = GObject.registerClass({
         }
     }
 
+    // Ręczne, pancerne łączenie sygnałów dla Meta.Window
     _trackWindow(win) {
         const cb = () => this._queueProximityCheck();
         const ids = [];
 
-        const signals = [ 'size-changed', 'position-changed', 'notify::fullscreen', 'notify::maximized-horizontally', 'notify::maximized-vertically', 'notify::minimized' ];
-        for (const sig of signals) { try { ids.push(win.connect(sig, cb)); } catch (e) {} }
+        const signals = [
+            'size-changed', 'position-changed', 
+            'notify::fullscreen', 'notify::maximized-horizontally', 
+            'notify::maximized-vertically', 'notify::minimized'
+        ];
+        
+        for (const sig of signals) { 
+            try { ids.push(win.connect(sig, cb)); } catch (e) {} 
+        }
 
         const unmanagedId = win.connect('unmanaged', () => {
             this._untrackWindow(win);
@@ -179,6 +192,7 @@ export const Intellihide = GObject.registerClass({
         if (!ids) ids = this._trackedWindows.get(win) || [];
         for (const id of ids) {
             try { 
+                // KLUCZOWE: Sprawdzenie, czy obiekt C wciąż istnieje przed odłączeniem
                 if (GObject.signal_handler_is_connected(win, id)) {
                     win.disconnect(id); 
                 }
@@ -338,7 +352,7 @@ export const Intellihide = GObject.registerClass({
     }
 
     _shouldBeVisible() {
-        if (this._blocked) return true; // 🟢 FIX: Blokada dymka tacy ma najwyższy priorytet
+        if (this._blocked) return true;
         if (Main.overview.visible)      return true;
         if (this._holdCounter > 0)      return true;
         if (this._isAnyWindowFullscreen()) return false;

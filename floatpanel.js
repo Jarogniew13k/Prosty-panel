@@ -1,9 +1,10 @@
-// Prosty Panel — floatpanel.js (Meta.Strut, bez dummy widget)
+// Prosty Panel — floatpanel.js (Zabezpieczone śledzenie okien Meta.Window)
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import Meta from 'gi://Meta';
 import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { PANEL_HEIGHT } from './constants.js';
 import { BottomTaskbar } from './classicpanel.js';
@@ -17,7 +18,7 @@ export class FloatPanel {
         this._autoHide = autoHide;
         this._settings = settings;
         this._bar = null;
-        this._strut = null;          // Meta.Strut – bezpieczna rezerwacja miejsca
+        this._strut = null;          
         this._intellihide = null;
         
         this._monitorId = 0;
@@ -28,7 +29,9 @@ export class FloatPanel {
         
         this._checkDebounceId = 0;
         this._newWinRecheckId = 0;
-        this._trackedWindows = new Set();
+        
+        // 🟢 FIX: Używamy niezawodnej Mapy do okien, tak jak w intellihide
+        this._trackedWindows = new Map(); 
     }
 
     enable() {
@@ -42,7 +45,6 @@ export class FloatPanel {
 
         Main.layoutManager.addTopChrome(this._bar, { affectsStruts: false, trackFullscreen: false });
 
-        // Przezroczysty widget rezerwujący 62px przy dolnej krawędzi (strut)
         if (!this._autoHide) {
             this._strutWidget = new St.Widget({
                 opacity: 0,
@@ -64,7 +66,7 @@ export class FloatPanel {
             if (this._strutWidget) {
                 const m = Main.layoutManager.primaryMonitor;
                 this._strutWidget.set_position(m.x, m.y + m.height - 64);
-                this._strutWidget.set_size(m.width, 62);
+                this._strutWidget.set_size(m.width, 64);
             }
         });
 
@@ -144,9 +146,10 @@ export class FloatPanel {
         const ws = global.workspace_manager.get_active_workspace();
         const current = new Set(ws.list_windows());
 
-        for (const win of this._trackedWindows) {
+        // 🟢 FIX: Bezpieczna iteracja po mapie
+        for (const [win, ids] of this._trackedWindows) {
             if (!current.has(win)) {
-                this._untrackWindow(win);
+                this._untrackWindow(win, ids);
                 this._trackedWindows.delete(win);
             }
         }
@@ -157,37 +160,48 @@ export class FloatPanel {
 
     _trackWindow(win) {
         const cb = () => this._queueFullscreenCheck();
-        
-        win.connectObject(
-            'size-changed', cb,
-            'position-changed', cb,
-            'notify::fullscreen', cb,
-            'notify::maximized-horizontally', cb,
-            'notify::maximized-vertically', cb,
-            'notify::minimized', cb,
-            this._bar
-        );
+        const ids = [];
 
-        win.connectObject('unmanaged', () => {
+        const signals = [
+            'size-changed', 'position-changed', 
+            'notify::fullscreen', 'notify::maximized-horizontally', 
+            'notify::maximized-vertically', 'notify::minimized'
+        ];
+        
+        for (const sig of signals) { 
+            try { ids.push(win.connect(sig, cb)); } catch (e) {} 
+        }
+
+        const unmanagedId = win.connect('unmanaged', () => {
             this._untrackWindow(win);
             this._trackedWindows.delete(win);
             this._queueFullscreenCheck();
-        }, this._bar);
+        });
+        ids.push(unmanagedId);
 
-        this._trackedWindows.add(win);
+        // 🟢 FIX: Zapisujemy tablicę ID do mapy
+        this._trackedWindows.set(win, ids);
     }
 
-    _untrackWindow(win) {
-        if (this._bar) win.disconnectObject(this._bar);
+    _untrackWindow(win, ids) {
+        if (!ids) ids = this._trackedWindows.get(win) || [];
+        for (const id of ids) {
+            try { 
+                if (GObject.signal_handler_is_connected(win, id)) {
+                    win.disconnect(id); 
+                }
+            } catch (e) {}
+        }
     }
 
     _clearAllTrackedWindows() {
-        for (const win of this._trackedWindows) this._untrackWindow(win);
+        for (const [win, ids] of this._trackedWindows) this._untrackWindow(win, ids);
         this._trackedWindows.clear();
     }
 
     _onWindowCreated(win) {
         GLib.idle_add(GLib.PRIORITY_LOW, () => {
+            if (!this._bar || this._bar._panelDestroyed) return GLib.SOURCE_REMOVE;
             this._rebuildTrackedWindows();
             this._queueFullscreenCheck();
             return GLib.SOURCE_REMOVE;
@@ -196,6 +210,7 @@ export class FloatPanel {
         if (this._newWinRecheckId) GLib.source_remove(this._newWinRecheckId);
         this._newWinRecheckId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, NEW_WINDOW_RECHECK_DELAY, () => {
             this._newWinRecheckId = 0;
+            if (!this._bar || this._bar._panelDestroyed) return GLib.SOURCE_REMOVE;
             this._rebuildTrackedWindows();
             this._queueFullscreenCheck();
             return GLib.SOURCE_REMOVE;
@@ -206,6 +221,7 @@ export class FloatPanel {
         if (this._checkDebounceId) return;
         this._checkDebounceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
             this._checkDebounceId = 0;
+            if (!this._bar || this._bar._panelDestroyed) return GLib.SOURCE_REMOVE;
             this._updateStaticVisibility();
             return GLib.SOURCE_REMOVE;
         });

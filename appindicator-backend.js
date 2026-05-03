@@ -14,6 +14,7 @@ const WATCHER_XML = `
   <interface name="org.kde.StatusNotifierWatcher">
     <method name="RegisterStatusNotifierItem"><arg type="s" name="service" direction="in"/></method>
     <method name="RegisterStatusNotifierHost"><arg type="s" name="service" direction="in"/></method>
+    <method name="StatusNotifierItemUnregistered"><arg type="s" name="service" direction="in"/></method>
     <property name="RegisteredStatusNotifierItems" type="as" access="read"/>
     <property name="IsStatusNotifierHostRegistered" type="b" access="read"/>
     <property name="ProtocolVersion" type="i" access="read"/>
@@ -70,7 +71,6 @@ const safeUnpack = (variant) => {
     return v;
 };
 
-// 🟢 FIX: Dodałem większe rozmiary (512, 256, 128, 96, 64) żeby znajdować ikony Discorda i Heroic!
 function _findIconFile(baseName, searchPaths) {
     if (!baseName) return null;
     const exts = ['.png', '.svg', '.xpm', ''];
@@ -244,7 +244,7 @@ export const TrayBackend = GObject.registerClass({
         super._init();
         this._items = new Map();
         this._refreshTimeouts = new Map();
-        this._unregisterTimeouts = new Map(); // Kontroler usuwania ikon
+        this._unregisterTimeouts = new Map(); 
         this._rawSignals = new Map(); 
         this._dbus = Gio.DBus.session;
         this._initDualMode();
@@ -262,10 +262,8 @@ export const TrayBackend = GObject.registerClass({
                     if (Array.isArray(items)) for (const service of items) this._registerItem(service);
                 }
                 
-                // 🟢 FIX: Ochrona przed wyścigiem zdarzeń w Electronie
                 this._watcherProxy.connectSignal('StatusNotifierItemRegistered', (proxy, sender, params) => { 
                     const service = safeUnpack(params)[0];
-                    // Jeśli chcieliśmy to usunąć, ale jednak wraca - anulujemy usuwanie!
                     if (this._unregisterTimeouts.has(service)) {
                         GLib.source_remove(this._unregisterTimeouts.get(service));
                         this._unregisterTimeouts.delete(service);
@@ -278,7 +276,7 @@ export const TrayBackend = GObject.registerClass({
                 });
                 
                 this._watcherProxy.connectSignal('StatusNotifierItemUnregistered', (proxy, sender, params) => { 
-                    this._requestUnregister(safeUnpack(params)[0], false); // fałsz = poczekaj 500ms
+                    this._requestUnregister(safeUnpack(params)[0], false); 
                 });
             } else {
                 this._hostOwnWatcher();
@@ -309,6 +307,12 @@ export const TrayBackend = GObject.registerClass({
                     invocation.return_value(null);
                 } else if (method === 'RegisterStatusNotifierHost') {
                     invocation.return_value(null);
+                } else if (method === 'StatusNotifierItemUnregistered') {
+                    // Natychmiastowe ubijanie ikony 
+                    let service = String(safeUnpack(params)[0]);
+                    if (service.startsWith('/')) service = sender + service;
+                    this._requestUnregister(service, true); 
+                    invocation.return_value(null);
                 }
             }, 
             (conn, sender, path, iface, prop) => {
@@ -335,10 +339,9 @@ export const TrayBackend = GObject.registerClass({
             });
             await proxy.init_async(GLib.PRIORITY_DEFAULT, null);
 
-            // Jeśli program naprawdę umarł w systemie - zabijamy natychmiast
             const ownerChangedId = proxy.connect('notify::g-name-owner', () => {
                 if (!proxy.g_name_owner) {
-                    this._requestUnregister(service, true); // prawda = usuń natychmiast
+                    this._requestUnregister(service, true); 
                 }
             });
 
@@ -361,7 +364,6 @@ export const TrayBackend = GObject.registerClass({
         } catch (e) {}
     }
 
-    // 🟢 FIX: Kontroler Usuwania (Debounce)
     _requestUnregister(service, immediate = false) {
         if (immediate) {
             if (this._unregisterTimeouts.has(service)) {
@@ -474,7 +476,7 @@ export const TrayBackend = GObject.registerClass({
             absoluteIconPath = _findIconFile(id, [
                 '/usr/share/pixmaps', 
                 '/usr/local/share/pixmaps',
-                `${GLib.get_home_dir()}/.local/share/pixmaps`,
+                `${GLib.get_home_dir()}/.local/share/pixmaps`, // POPRAWIONO TUTAJ!
                 '/usr/share/icons/hicolor'
             ]);
         }

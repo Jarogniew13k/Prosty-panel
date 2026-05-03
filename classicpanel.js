@@ -4,9 +4,10 @@ import GObject from 'gi://GObject';
 import St      from 'gi://St';
 import Clutter from 'gi://Clutter';
 import GLib    from 'gi://GLib';
+import Gio     from 'gi://Gio';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import * as Util from 'resource:///org/gnome/shell/misc/util.js';
+import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import { PANEL_HEIGHT }       from './constants.js';
 import { makeSep, openMenuAboveBar } from './utils.js';
@@ -92,27 +93,34 @@ export const BottomTaskbar = GObject.registerClass({
         this._spacerMenuMgr.addMenu(this._spacerMenu);
         this._openMenus.add(this._spacerMenu);
 
-        const addSpacerMenuItem = (label, cmd, callback) => {
+        const addSpacerMenuItem = (label, cmdArray, callback) => {
             const item = new PopupMenu.PopupMenuItem(label);
             item.connect('activate', () => { 
-                if (cmd) Util.spawnCommandLine(cmd); 
+                if (cmdArray) {
+                    try {
+                        Gio.Subprocess.new(cmdArray, Gio.SubprocessFlags.NONE);
+                    } catch(e) { console.warn(e); }
+                } 
                 if (callback) callback(); 
             });
             this._spacerMenu.addMenuItem(item);
         };
 
-        addSpacerMenuItem('Monitor systemu', 'gnome-system-monitor');
-        addSpacerMenuItem('Pliki', 'nautilus');
+        addSpacerMenuItem('Monitor systemu', ['gnome-system-monitor']);
+        addSpacerMenuItem('Pliki', ['nautilus']);
         this._spacerMenu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        addSpacerMenuItem('Ustawienia GNOME', 'gnome-control-center');
+        addSpacerMenuItem('Ustawienia GNOME', ['gnome-control-center']);
         
         addSpacerMenuItem('Ustawienia panelu', null, () => {
-            const extensionObject = Main.extensionManager.lookup('gnome-panel@user.local');
-            if (extensionObject && typeof extensionObject.openPreferences === 'function') {
-                extensionObject.openPreferences();
-            } else {
-                Util.spawnCommandLine('gnome-extensions prefs gnome-panel@user.local');
-            }
+            try {
+                const ext = Extension.lookupByURL(import.meta.url);
+                if (ext && typeof ext.openPreferences === 'function') {
+                    ext.openPreferences();
+                } else {
+                    const extUuid = ext ? ext.uuid : 'gnome-panel@user.local';
+                    Gio.Subprocess.new(['gnome-extensions', 'prefs', extUuid], Gio.SubprocessFlags.NONE);
+                }
+            } catch(e) { console.error(e); }
         });
         
         this._spacerMenu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());

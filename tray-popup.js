@@ -206,13 +206,18 @@ export function buildTrayArrow(host) {
 }
 
 async function _buildAndOpenDBusMenu(item, sourceActor, host, popup) {
-    if (host._activeAppMenu) {
-        host._activeAppMenu.close();
-        host._activeAppMenu.destroy();
-        host._activeAppMenu = null;
-    }
+    // Zabezpieczenie przed race condition: async funkcja mogłaby być wywołana dwukrotnie
+    // przy szybkim podwójnym kliknięciu zanim pierwsze wywołanie dobiegnie końca.
+    if (host._dbusMenuPending) return;
+    host._dbusMenuPending = true;
 
     try {
+        if (host._activeAppMenu) {
+            host._activeAppMenu.close();
+            host._activeAppMenu.destroy();
+            host._activeAppMenu = null;
+        }
+
         const res = await new Promise((resolve, reject) => {
             item.menuProxy.call(
                 'GetLayout', new GLib.Variant('(iias)', [0, -1, []]),
@@ -312,6 +317,8 @@ async function _buildAndOpenDBusMenu(item, sourceActor, host, popup) {
         closeTrayPopup(host);
         const [mouseX, mouseY] = sourceActor.get_transformed_position();
         item.contextMenu(Math.floor(mouseX), Math.floor(mouseY));
+    } finally {
+        host._dbusMenuPending = false;
     }
 }
 

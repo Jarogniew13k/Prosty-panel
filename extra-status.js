@@ -143,7 +143,17 @@ export function buildExtraStatus(host) {
     box.add_child(kbdBtn);
 
     let recTimerId = 0;
-    let isKbdTimeout = false; 
+
+    // --- KLAWIATURA: stałe referencje poza syncKbd ---
+    // _ism ustawiamy raz przy pierwszym udanym wywołaniu; connectObject jest idempotentne
+    // dla pary (sygnał, obiekt), ale stabilna referencja do kbdUpdateLabel eliminuje
+    // tworzenie nowego domknięcia przy każdym notify::visible.
+    let _ism = null;
+    const kbdUpdateLabel = () => {
+        if (host._panelDestroyed) return;
+        if (_ism && _ism.currentSource && _ism.currentSource.shortName)
+            kbdLabel.set_text(_ism.currentSource.shortName);
+    };
 
     const syncRec = () => {
         if (host._panelDestroyed) return;
@@ -191,28 +201,31 @@ export function buildExtraStatus(host) {
         if (!kbd) { kbdBtn.visible = false; return; }
         kbdBtn.visible = kbd.visible;
 
+        // Jeśli ISM już zainicjalizowany — tylko zaktualizuj etykietę, nie łącz ponownie
+        if (_ism !== null) {
+            kbdUpdateLabel();
+            return;
+        }
+
         try {
             const ism = Keyboard.getInputSourceManager();
             if (ism) {
-                const updateLabel = () => {
-                    if (host._panelDestroyed) return;
-                    if (ism.currentSource && ism.currentSource.shortName) kbdLabel.set_text(ism.currentSource.shortName);
-                };
-                ism.connectObject('current-source-changed', updateLabel, box);
-                isKbdTimeout = false;
-                updateLabel();
+                _ism = ism;
+                // Łączymy raz ze stabilną referencją — connectObject jest idempotentne,
+                // ale dzięki hoistingowi nie tworzymy nowego domknięcia przy każdym wywołaniu.
+                ism.connectObject('current-source-changed', kbdUpdateLabel, box);
+                kbdUpdateLabel();
             }
         } catch (e) {
-            isKbdTimeout = true;
             if (box._kbdFallbackId) {
                 GLib.source_remove(box._kbdFallbackId);
                 box._kbdFallbackId = 0;
             }
-            let kbdFallbackId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+            box._kbdFallbackId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
                 if (host._panelDestroyed || box.is_destroyed?.()) {
                     box._kbdFallbackId = 0;
                     return GLib.SOURCE_REMOVE;
-                } 
+                }
                 if (kbd.visible) {
                     let text = '';
                     if (kbd._indicator && typeof kbd._indicator.get_text === 'function') text = kbd._indicator.get_text();
@@ -221,7 +234,6 @@ export function buildExtraStatus(host) {
                 }
                 return GLib.SOURCE_CONTINUE;
             });
-            box._kbdFallbackId = kbdFallbackId;
         }
     };
 

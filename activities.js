@@ -2,9 +2,10 @@
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
+import Gio from 'gi://Gio';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import * as Util from 'resource:///org/gnome/shell/misc/util.js';
+import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import { ICON_SIZE } from './constants.js';
 import { openMenuAboveBar } from './utils.js';
@@ -42,29 +43,48 @@ export function buildActivities() {
     btn._menuMgr = new PopupMenu.PopupMenuManager(btn);
     btn._menuMgr.addMenu(btn._menu);
 
-    const addMenuItem = (label, cmd) => {
+    const addMenuItem = (label, cmdArray) => {
         const item = new PopupMenu.PopupMenuItem(label);
         item.connect('activate', () => {
-            if (cmd) Util.spawnCommandLine(cmd);
+            if (cmdArray) {
+                try {
+                    Gio.Subprocess.new(cmdArray, Gio.SubprocessFlags.NONE);
+                } catch (e) { console.warn('[ProstyPanel] Błąd wywołania:', e); }
+            }
         });
         btn._menu.addMenuItem(item);
     };
 
     // Opcje systemowe z komendami
-    addMenuItem('Opcje zasilania', 'gnome-control-center power');
-    addMenuItem('Dziennik zdarzeń', 'gnome-logs');
-    addMenuItem('System', 'gnome-control-center system');
-    addMenuItem('Zarządzanie dyskami', 'gnome-disks');
+    addMenuItem('Opcje zasilania', ['gnome-control-center', 'power']);
+    addMenuItem('Dziennik zdarzeń', ['gnome-logs']);
+    addMenuItem('System', ['gnome-control-center', 'system']);
+    addMenuItem('Zarządzanie dyskami', ['gnome-disks']);
     
     btn._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
     
-    addMenuItem('System monitor', 'gnome-system-monitor');
-    addMenuItem('Files', 'nautilus');
+    addMenuItem('System monitor', ['gnome-system-monitor']);
+    addMenuItem('Files', ['nautilus']);
     
     btn._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
     
-    addMenuItem('Ustawienia GNOME', 'gnome-control-center');
-    addMenuItem('Ustawienia panelu', 'gnome-extensions prefs gnome-panel@user.local');
+    addMenuItem('Ustawienia GNOME', ['gnome-control-center']);
+    
+    const prefsItem = new PopupMenu.PopupMenuItem('Ustawienia panelu');
+    prefsItem.connect('activate', () => {
+        try {
+            const ext = Extension.lookupByURL(import.meta.url);
+            if (ext && typeof ext.openPreferences === 'function') {
+                ext.openPreferences();
+            } else {
+                // 🟢 FIX: Dynamiczny, bezbłędny fallback UUID wyciągnięty ze ścieżki instalacji
+                const match = import.meta.url.match(/extensions\/([^/]+)/);
+                const extUuid = (ext && ext.uuid) ? ext.uuid : (match ? match[1] : 'gnome-panel@user.local');
+                Gio.Subprocess.new(['gnome-extensions', 'prefs', extUuid], Gio.SubprocessFlags.NONE);
+            }
+        } catch(e) {}
+    });
+    btn._menu.addMenuItem(prefsItem);
 
     btn.connect('clicked', () => {
         if (btn._menu.isOpen) btn._menu.close();
@@ -83,7 +103,6 @@ export function buildActivities() {
         return Clutter.EVENT_PROPAGATE;
     });
 
-    // 🟢 CZYSZCZENIE ZASOBÓW
     btn._cleanup = () => {
         if (btn._menu) {
             btn._menu.destroy();
