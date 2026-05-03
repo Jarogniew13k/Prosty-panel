@@ -104,7 +104,7 @@ Ten projekt czerpie garściami z pracy społeczności Open Source. Chciałbym z 
 
 * **[Dash to Panel](https://github.com/home-sweet-gnome/dash-to-panel)** – logika inteligentnego ukrywania paska (Intellihide) oraz mechanizm wykrywania kolizji z oknami (Proximity) w tym projekcie bazują bezpośrednio na zmodyfikowanym kodzie źródłowym Dash to Panel.
 * **[Dash to Dock](https://github.com/micheleg/dash-to-dock)** – za ogromną inspirację do stworzenia trybu pływającego (Float) oraz ogólnego podejścia do zarządzania paskiem zadań w środowisku GNOME.
-
+* **[AppIndicator and KStatusNotifierItem Support](https://github.com/ubuntu/gnome-shell-extension-appindicator)** – kod tego oficjalnego rozszerzenia posłużył jako nieocenione źródło wiedzy i inspiracji przy budowie naszego modułu tacy systemowej.
 ---
 
 ## Licencja
