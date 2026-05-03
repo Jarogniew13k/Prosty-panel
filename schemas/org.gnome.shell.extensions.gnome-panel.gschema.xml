@@ -32,12 +32,6 @@
       <description>Pasek znika gdy okno nachodzi na jego obszar i pojawia się przy najechaniu kursorem na dolną krawędź.</description>
     </key>
 
-    <key name="prevent-method" type="s">
-      <default>'strut'</default>
-      <summary>Metoda zapobiegania znikaniu paska (Wayland)</summary>
-      <description>'strut' – rezerwuje 4 piksele (lekka, stabilna). 'disable-unredirect' – wyłącza Direct Scanout (brak przerwy, większe obciążenie GPU).</description>
-    </key>
-
     <key name="theme" enum="org.gnome.shell.extensions.gnome-panel.theme">
       <default>"cyberpunk"</default>
       <summary>Motyw paska</summary>
