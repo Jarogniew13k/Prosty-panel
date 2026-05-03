@@ -16,6 +16,8 @@ export function buildAppsList(host) {
         y_expand    : false,
     });
 
+    // Delegate zostaje zachowany wyłącznie dla dropów przychodzących z ZEWNĄTRZ 
+    // (np. przeciągnięcie ikony z siatki aplikacji GNOME).
     host._delegate = {
         handleDragOver(source, actor, x, y, time) {
             if (source && source.app && typeof source.app.get_id === 'function') {
@@ -26,6 +28,11 @@ export function buildAppsList(host) {
         acceptDrop(source, actor, x, y, time) {
             if (!source || !source.app || typeof source.app.get_id !== 'function') return false;
             
+            // Ignorujemy przyciski z wewnątrz panelu jako zabezpieczenie
+            if (source instanceof AppButton || (source._delegate && source._delegate instanceof AppButton)) {
+                return true; 
+            }
+
             const id = source.app.get_id();
             const favs = AppFavorites.getAppFavorites();
             
@@ -78,7 +85,6 @@ export function buildAppsList(host) {
         for (const app of favs) toKeep.add(app.get_id());
         for (const app of orderedRun) toKeep.add(app.get_id());
 
-        // 1. Bezpiecznie niszczymy tylko NIEPOTRZEBNE przyciski aplikacji
         for (const [id, btn] of host._buttons.entries()) {
             if (!toKeep.has(id)) {
                 if (typeof btn._cleanup === 'function') btn._cleanup();
@@ -88,7 +94,6 @@ export function buildAppsList(host) {
             }
         }
 
-        // 2. Dodajemy lub PRZESUWAMY pozostałe przyciski (zapobiega to usuwaniu ich ze sceny)
         let childIndex = 0;
         const addOrSortBtn = (app) => {
             const id = app.get_id();
@@ -101,7 +106,8 @@ export function buildAppsList(host) {
             } else {
                 try {
                     if (btn.get_parent() === appBox) {
-                        appBox.set_child_at_index(btn, childIndex);
+                        if (appBox.get_child_at_index(childIndex) !== btn)
+                            appBox.set_child_at_index(btn, childIndex);
                     } else {
                         appBox.insert_child_at_index(btn, childIndex);
                     }
@@ -131,12 +137,15 @@ export function buildAppsList(host) {
         }
     };
 
-    // Debounce dla rebuildApps: wiele szybkich sygnałów (app-state-changed, changed,
-    // window-created) składa się w jedno wywołanie po 100 ms. rebuildApps() pozostaje
-    // dostępne do bezpośredniego wywołania tam, gdzie wymagana jest natychmiastowa
-    // przebudowa (reorder-running, startup).
     let _rebuildDebounceId = 0;
     const queueRebuildApps = () => {
+        if (host._suppressNextFavRebuild) {
+            host._suppressNextFavRebuild = false;
+            if (_rebuildDebounceId) { GLib.source_remove(_rebuildDebounceId); _rebuildDebounceId = 0; }
+            updateStates(); 
+            return;
+        }
+
         if (_rebuildDebounceId) return;
         _rebuildDebounceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
             _rebuildDebounceId = 0;
@@ -157,8 +166,6 @@ export function buildAppsList(host) {
         favs.connectObject('changed', () => queueRebuildApps(), appBox);
         
         display.connectObject('window-created', () => {
-            // idle_add gwarantuje że okno jest zmapowane przed przebudową;
-            // queueRebuildApps scala kolejne idle'e w jedno wywołanie.
             GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
                 if (host._panelDestroyed) return GLib.SOURCE_REMOVE;
                 queueRebuildApps();
@@ -176,7 +183,7 @@ export function buildAppsList(host) {
             if (idx !== -1) {
                 host._runOrder.splice(idx, 1);
                 host._runOrder.splice(pos, 0, appId);
-                rebuildApps(); // natychmiastowa przebudowa — jawna akcja użytkownika
+                rebuildApps();
             }
         }, appBox);
     };

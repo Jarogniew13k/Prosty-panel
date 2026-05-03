@@ -1,4 +1,4 @@
-// Prosty Panel — appbutton.js (GNOME 45+ Ready, pełne connectObject, naprawiony DND clone, naprawiony wyciek markera)
+// Prosty Panel — appbutton.js (GNOME 45+ Ready, pełne connectObject, naprawiony DND clone, usunięte lagi DBus)
 
 import GObject  from 'gi://GObject';
 import St       from 'gi://St';
@@ -8,7 +8,7 @@ import GLib     from 'gi://GLib';
 import * as Main         from 'resource:///org/gnome/shell/ui/main.js';
 import * as AppFavorites from 'resource:///org/gnome/shell/ui/appFavorites.js';
 import * as PopupMenu    from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import * as DND          from 'resource:///org/gnome/shell/ui/dnd.js';
+// Usunięty import DND - nie potrzebujemy konfliktującego natywnego systemu dla przycisków paska
 
 import { ICON_SIZE, HOVER_DELAY_MS, HIDE_DELAY_MS, PREVIEW_W, PREVIEW_H } from './constants.js';
 import { openMenuAboveBar } from './utils.js';
@@ -55,8 +55,8 @@ export const AppButton = GObject.registerClass({
         this._cachedBar    = null;
         this._hasWinSignal = false; 
 
-        this._delegate = this;
-        this._draggable = DND.makeDraggable(this);
+        // CAŁKOWICIE USUNIĘTE: this._draggable = DND.makeDraggable(this);
+        // Był to główny powód podwójnego obciążania kompozytora podczas przeciągania.
 
         const box = new St.BoxLayout({
             vertical : true,
@@ -176,8 +176,6 @@ export const AppButton = GObject.registerClass({
         this._press.dragging = true;
         this.opacity = 80;
         
-        // --- NOWOŚĆ: Cache dla optymalizacji ---
-        // Liczymy to tylko raz przy rozpoczęciu przeciągania, zamiast 100 razy na sekundę w ruchu
         const appBox = this.get_parent();
         const buttons = appBox.get_children().filter(c => c instanceof AppButton);
         const favs = AppFavorites.getAppFavorites().getFavorites();
@@ -188,7 +186,6 @@ export const AppButton = GObject.registerClass({
             : buttons.filter(b => !favIds.has(b.app.get_id()));
             
         this._cachedBaseIndex = this._isFavorite ? 0 : favs.length;
-        // ---------------------------------------
         
         const iconTexture = this._app.create_icon_texture(ICON_SIZE);
         this._dragActor = new St.Bin({ child: iconTexture, opacity: 200 });
@@ -220,9 +217,6 @@ export const AppButton = GObject.registerClass({
         }
 
         const appBox = this.get_parent();
-        
-        // --- NOWOŚĆ: Oszczędzanie procesora ---
-        // Pobieramy gotowe filtry z Cache, bez obciążania Garbage Collectora
         const targetBtns = this._cachedTargetBtns || [];
         const baseIndex = this._cachedBaseIndex || 0;
         
@@ -254,15 +248,10 @@ export const AppButton = GObject.registerClass({
     _dragEnd() {
         if (this._isDestroyed) return;
 
-        // Natychmiastowa reakcja wizualna — tylko operacje bezkosztoweokna
         this.opacity = 255;
-
-        // Ukryj aktorów wizualnie (hide() jest szybkie — brak layout pass),
-        // ale NIE niszcz ich jeszcze — destroy() powoduje pełne przejście layoutu.
         if (this._dragActor) this._dragActor.hide();
         if (this._dropMarker) this._dropMarker.hide();
 
-        // Przekaż referencje lokalnie i wyczyść stan, żeby cleanup() był bezpieczny
         const dragActor  = this._dragActor;
         const dropMarker = this._dropMarker;
         this._dragActor  = null;
@@ -276,32 +265,63 @@ export const AppButton = GObject.registerClass({
         const favs  = AppFavorites.getAppFavorites();
         const isFav = this._isFavorite;
 
-        // Wszystkie ciężkie operacje (destroy aktorów, przebudowa panelu, zapis ulubionych)
-        // odkładamy na następną wolną klatkę — UI zdąży się wyrenderować przed freeze'em.
-        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-            // Zniszcz klon przeciągania
+        // Pozwólmy Clutterowi wyrzucić starą klatkę i wziąć oddech przed niszczeniem aktorów
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 16, () => {
             if (dragActor) dragActor.destroy();
-
-            // Zniszcz marker upuszczenia
             if (dropMarker) {
                 if (dropMarker.get_parent()) Main.uiGroup.remove_child(dropMarker);
                 dropMarker.destroy();
             }
-
-            // Sygnał do paska (może przebudować wszystkie AppButtony — dlatego tutaj)
             if (!this._isDestroyed) this._emitBarSignal('drag-end');
-
             if (!target || this._isDestroyed) return GLib.SOURCE_REMOVE;
 
-            if (target.unfavorite) {
-                if (isFav) favs.removeFavorite(appId);
-            } else if (isFav) {
-                if (typeof favs.moveFavoriteToPos === 'function') favs.moveFavoriteToPos(appId, target.insertIndex);
-            } else {
+            if (!isFav) {
                 const favCount = favs.getFavorites().length;
                 const relativePos = target.insertIndex - favCount;
                 if (!this._isDestroyed) this._emitBarSignal('reorder-running', { appId, pos: relativePos });
+                return GLib.SOURCE_REMOVE;
             }
+
+            // Optymistyczna, BŁYSKAWICZNA aktualizacja samej sceny w GNOME
+            if (!target.unfavorite) {
+                const appBox = this.get_parent();
+                if (appBox) {
+                    try { appBox.set_child_at_index(this, target.insertIndex); } catch(e) {}
+                }
+            }
+
+            // ZDJĘCIE LAGÓW: timeout_add(400) zamist idle_add(300)!
+            // Wstrzymujemy zapis do GSettings przez 400ms. 
+            // Dzięki temu fizyczna blokada DBusa uderzy po tym, jak Clutter zamknie
+            // animacje kropek, a użytkownik odsunie myszkę. Kompozytor nie zamarznie na samej klatce "dropu".
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 400, () => {
+                if (this._isDestroyed) return GLib.SOURCE_REMOVE;
+                let bar = this._cachedBar;
+                if (!bar) {
+                    let p = this.get_parent();
+                    while (p) {
+                        if (p.has_style_class_name?.('bottom-taskbar')) { bar = p; break; }
+                        p = p.get_parent?.();
+                    }
+                }
+
+                if (bar) bar._suppressNextFavRebuild = true;
+
+                if (target.unfavorite) {
+                    favs.removeFavorite(appId);
+                } else {
+                    if (typeof favs.moveFavoriteToPos === 'function')
+                        favs.moveFavoriteToPos(appId, target.insertIndex);
+                }
+                
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+                    if (bar && bar._suppressNextFavRebuild) bar._suppressNextFavRebuild = false;
+                    return GLib.SOURCE_REMOVE;
+                });
+
+                return GLib.SOURCE_REMOVE;
+            });
+
             return GLib.SOURCE_REMOVE;
         });
     }
@@ -650,10 +670,7 @@ export const AppButton = GObject.registerClass({
             safeDisconnect(global.stage, 'releaseId', this._press);
         }
         
-        if (this._draggable) {
-            this._draggable.disconnectAll();
-            this._draggable = null;
-        }
+        // Usunięto czyszczenie this._draggable
         
         if (this._dragActor) {
             this._dragActor.destroy();
