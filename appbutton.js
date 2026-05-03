@@ -176,6 +176,20 @@ export const AppButton = GObject.registerClass({
         this._press.dragging = true;
         this.opacity = 80;
         
+        // --- NOWOŚĆ: Cache dla optymalizacji ---
+        // Liczymy to tylko raz przy rozpoczęciu przeciągania, zamiast 100 razy na sekundę w ruchu
+        const appBox = this.get_parent();
+        const buttons = appBox.get_children().filter(c => c instanceof AppButton);
+        const favs = AppFavorites.getAppFavorites().getFavorites();
+        const favIds = new Set(favs.map(f => f.get_id()));
+        
+        this._cachedTargetBtns = this._isFavorite 
+            ? buttons.filter(b => favIds.has(b.app.get_id()))
+            : buttons.filter(b => !favIds.has(b.app.get_id()));
+            
+        this._cachedBaseIndex = this._isFavorite ? 0 : favs.length;
+        // ---------------------------------------
+        
         const iconTexture = this._app.create_icon_texture(ICON_SIZE);
         this._dragActor = new St.Bin({ child: iconTexture, opacity: 200 });
         
@@ -197,19 +211,25 @@ export const AppButton = GObject.registerClass({
         if (this._dragActor) this._dragActor.set_position(mx - (ICON_SIZE / 2), my - (ICON_SIZE / 2));
         const bar = this.get_parent()?.get_parent();
         if (!bar) return;
+        
         const [bx, by] = bar.get_transformed_position();
-        if (my < by || my > by + bar.height) { this._dropMarker?.hide(); this._dropTarget = { unfavorite: true }; return; }
+        if (my < by || my > by + bar.height) { 
+            this._dropMarker?.hide(); 
+            this._dropTarget = { unfavorite: true }; 
+            return; 
+        }
+
         const appBox = this.get_parent();
-        const buttons = appBox.get_children().filter(c => c instanceof AppButton);
-        const favs = AppFavorites.getAppFavorites().getFavorites();
-        const favIds = new Set(favs.map(f => f.get_id()));
-        const favBtns = buttons.filter(b => favIds.has(b.app.get_id()));
-        const runBtns = buttons.filter(b => !favIds.has(b.app.get_id()));
-        let targetBtns = this._isFavorite ? favBtns : runBtns;
-        let baseIndex = this._isFavorite ? 0 : favBtns.length;
+        
+        // --- NOWOŚĆ: Oszczędzanie procesora ---
+        // Pobieramy gotowe filtry z Cache, bez obciążania Garbage Collectora
+        const targetBtns = this._cachedTargetBtns || [];
+        const baseIndex = this._cachedBaseIndex || 0;
+        
         let localIdx = targetBtns.length;
         let markerX = 0;
         const [boxX, boxY] = appBox.get_transformed_position();
+
         if (targetBtns.length > 0) {
             markerX = targetBtns[0].get_transformed_position()[0];
             for (let i = 0; i < targetBtns.length; i++) {
@@ -219,7 +239,10 @@ export const AppButton = GObject.registerClass({
                 if (mx < btnX + b.width / 2) { localIdx = i; markerX = btnX; break; }
                 markerX = btnX + b.width;
             }
-        } else { markerX = boxX; }
+        } else { 
+            markerX = boxX; 
+        }
+
         if (this._dropMarker) {
             this._dropMarker.set_size(3, this.height - 12);
             this._dropMarker.set_position(Math.round(markerX - 1.5), Math.round(boxY + 6));
@@ -230,30 +253,57 @@ export const AppButton = GObject.registerClass({
 
     _dragEnd() {
         if (this._isDestroyed) return;
+
+        // Natychmiastowa reakcja wizualna — tylko operacje bezkosztoweokna
         this.opacity = 255;
-        if (this._dragActor) { this._dragActor.destroy(); this._dragActor = null; }
-        
-        // Zabezpieczenie przed wyciekiem pamięci
-        if (this._dropMarker) { 
-            this._dropMarker.hide(); 
-            if (this._dropMarker.get_parent()) Main.uiGroup.remove_child(this._dropMarker); 
-            this._dropMarker.destroy(); 
-            this._dropMarker = null;
-        }
-        
-        this._emitBarSignal('drag-end');
-        const target = this._dropTarget; this._dropTarget = null;
-        if (!target) return;
+
+        // Ukryj aktorów wizualnie (hide() jest szybkie — brak layout pass),
+        // ale NIE niszcz ich jeszcze — destroy() powoduje pełne przejście layoutu.
+        if (this._dragActor) this._dragActor.hide();
+        if (this._dropMarker) this._dropMarker.hide();
+
+        // Przekaż referencje lokalnie i wyczyść stan, żeby cleanup() był bezpieczny
+        const dragActor  = this._dragActor;
+        const dropMarker = this._dropMarker;
+        this._dragActor  = null;
+        this._dropMarker = null;
+
+        const target = this._dropTarget;
+        this._dropTarget      = null;
+        this._cachedTargetBtns = null;
+
         const appId = this._app.get_id();
-        const favs = AppFavorites.getAppFavorites();
-        if (target.unfavorite) { if (this._isFavorite) favs.removeFavorite(appId); return; }
-        if (this._isFavorite) {
-            if (typeof favs.moveFavoriteToPos === 'function') favs.moveFavoriteToPos(appId, target.insertIndex);
-        } else {
-            const favCount = favs.getFavorites().length;
-            const relativePos = target.insertIndex - favCount;
-            this._emitBarSignal('reorder-running', { appId, pos: relativePos });
-        }
+        const favs  = AppFavorites.getAppFavorites();
+        const isFav = this._isFavorite;
+
+        // Wszystkie ciężkie operacje (destroy aktorów, przebudowa panelu, zapis ulubionych)
+        // odkładamy na następną wolną klatkę — UI zdąży się wyrenderować przed freeze'em.
+        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            // Zniszcz klon przeciągania
+            if (dragActor) dragActor.destroy();
+
+            // Zniszcz marker upuszczenia
+            if (dropMarker) {
+                if (dropMarker.get_parent()) Main.uiGroup.remove_child(dropMarker);
+                dropMarker.destroy();
+            }
+
+            // Sygnał do paska (może przebudować wszystkie AppButtony — dlatego tutaj)
+            if (!this._isDestroyed) this._emitBarSignal('drag-end');
+
+            if (!target || this._isDestroyed) return GLib.SOURCE_REMOVE;
+
+            if (target.unfavorite) {
+                if (isFav) favs.removeFavorite(appId);
+            } else if (isFav) {
+                if (typeof favs.moveFavoriteToPos === 'function') favs.moveFavoriteToPos(appId, target.insertIndex);
+            } else {
+                const favCount = favs.getFavorites().length;
+                const relativePos = target.insertIndex - favCount;
+                if (!this._isDestroyed) this._emitBarSignal('reorder-running', { appId, pos: relativePos });
+            }
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     _emitBarSignal(name, data = null) {
