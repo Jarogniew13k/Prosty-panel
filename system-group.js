@@ -71,7 +71,9 @@ export function buildSystemGroup(host) {
                         result.bt.push(actor);
                     } else if (n.startsWith('network-') || n.includes('airplane') || n.includes('wireless') || n.includes('wired')) {
                         result.net.push(actor);
-                    } else if (n.startsWith('battery-')) {
+                    } else if (n.startsWith('battery-') || n.includes('ac-adapter')) {
+                        // Łapiemy też ac-adapter-symbolic — pojawia się przy cold boocie
+                        // gdy bateria jest już odłączona i GNOME nigdy nie wyemituje battery-*
                         result.bat.push(actor);
                     }
                 } else if (typeof actor.get_children === 'function') {
@@ -86,9 +88,36 @@ export function buildSystemGroup(host) {
             return ico && ico.visible && ico.opacity > 0 && ico.get_width() > 0 && !ico.is_destroyed?.();
         };
 
-        const sync = (srcIcon, ourIcon, fallback, binActor = null) => {
+        // Pomocnicza funkcja do odczytu aktualnej nazwy ikony (icon_name lub gicon)
+        const resolveIconName = (srcIcon) => {
+            let n = srcIcon.icon_name || '';
+            if (!n && srcIcon.gicon && typeof srcIcon.gicon.get_names === 'function') {
+                const names = srcIcon.gicon.get_names();
+                if (names && names.length > 0) n = names[0];
+            }
+            return n;
+        };
+
+        // iconFilter: opcjonalna funkcja (iconName) => bool
+        // Gdy zwróci false LUB gdy srcIcon stanie się niewidoczny (GNOME ukrywa ikonę
+        // bez zmiany nazwy) — pokazujemy ac-adapter-symbolic zamiast błędnej/pustej komórki.
+        const sync = (srcIcon, ourIcon, fallback, binActor = null, iconFilter = null) => {
             const update = () => {
                 try {
+                    if (iconFilter && binActor) {
+                        const currentName = resolveIconName(srcIcon);
+                        const isVisible   = isIconTrulyVisible(srcIcon);
+
+                        // Dwa edge case'y obsługiwane razem:
+                        // 1. Ikona zmieniła nazwę na nie-bateryjną (np. ac-adapter-symbolic)
+                        // 2. GNOME ukrył ikonę bez zmiany nazwy (visible = false)
+                        if (!iconFilter(currentName) || !isVisible) {
+                            ourIcon.set_icon_name('ac-adapter-symbolic');
+                            binActor.visible = true;
+                            return;
+                        }
+                    }
+
                     if (srcIcon.gicon) ourIcon.set_gicon(srcIcon.gicon);
                     else if (srcIcon.icon_name) ourIcon.set_icon_name(srcIcon.icon_name);
                     else ourIcon.set_icon_name(fallback);
@@ -167,7 +196,10 @@ export function buildSystemGroup(host) {
             if (found.bt[0]) sync(found.bt[0], btCell.icon, 'bluetooth-active-symbolic', btCell.bin);
             else btCell.bin.visible = false;
 
-            if (found.bat[0]) sync(found.bat[0], batCell.icon, 'battery-missing-symbolic', batCell.bin);
+            // Filtr: gdy GNOME zmieni ikonę na nie-bateryjną lub ją ukryje,
+            // pokazujemy ac-adapter-symbolic zamiast błędnej ikony lub pustej komórki.
+            if (found.bat[0]) sync(found.bat[0], batCell.icon, 'battery-missing-symbolic', batCell.bin,
+                (name) => name.startsWith('battery-'));
             else batCell.bin.visible = false;
             
             host._sysBindIdleId = 0; return GLib.SOURCE_REMOVE;
