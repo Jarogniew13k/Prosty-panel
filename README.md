@@ -72,7 +72,6 @@ gnome-extensions prefs gnome-panel@user.local
 Opcje:
 - Tryb: klasyczny / pływający  
 - Auto-ukrywanie  
-- disable-unredirect 
 - Motyw  
 
 ---
@@ -83,17 +82,6 @@ Opcje:
 gnome-extensions disable gnome-panel@user.local
 rm -rf ~/.local/share/gnome-shell/extensions/gnome-panel@user.local
 ```
-
----
-
-## Jak działa
-
-- Pasek dodawany do Main.layoutManager  
-- Klasyczny: affectsStruts  
-- Pływający: disable-unredirect  
-- Auto-hide: targetBox + strefy  
-- Fullscreen: brak reakcji  
-- Overview: pasek widoczny  
 
 ---
 
