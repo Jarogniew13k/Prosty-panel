@@ -116,19 +116,19 @@
 .theme-dracula .tb-btn:hover .tb-btn-icon, .theme-dracula .tb-sys-group:hover .tb-sys-cell-icon, .theme-dracula .tb-clock-btn:hover .tb-clock-time, .theme-dracula .tb-clock-btn:hover .tb-clock-date, .theme-dracula .tb-btn:hover .tb-kbd-label, .theme-dracula .tb-tray-cell:hover .tb-tray-cell-icon { color: #dccaf5 !important; }
 
 /* 3. Ubuntu Yaru */
-.bottom-taskbar.theme-ubuntu-yaru { background-color: #1f1f1f; background-image: linear-gradient(180deg, #2c2c2c 0%, #1f1f1f 100%); }
-.theme-ubuntu-yaru .tb-clock-time, .theme-ubuntu-yaru .tb-clock-date, .theme-ubuntu-yaru .tb-btn-icon, .theme-ubuntu-yaru .tb-sys-cell-icon, .theme-ubuntu-yaru .tb-kbd-label { color: #f7f7f7; }
+.bottom-taskbar.theme-ubuntu-yaru { background-color: #201e1c; background-image: linear-gradient(180deg, #2e2a26 0%, #201e1c 100%); }
+.theme-ubuntu-yaru .tb-clock-time, .theme-ubuntu-yaru .tb-clock-date, .theme-ubuntu-yaru .tb-btn-icon, .theme-ubuntu-yaru .tb-sys-cell-icon, .theme-ubuntu-yaru .tb-kbd-label { color: #f5f0eb; }
 .theme-ubuntu-yaru .tb-act-icon { color: #e95420; }
 .theme-ubuntu-yaru .tb-dot, .theme-ubuntu-yaru .tb-notif-dot, .tb-drop-marker.theme-ubuntu-yaru { background-color: #e95420; }
-.theme-ubuntu-yaru .tb-sep { background-color: rgba(255, 255, 255, 0.1); }
-.theme-ubuntu-yaru .tb-act-btn:hover, .theme-ubuntu-yaru .tb-app-btn:hover, .theme-ubuntu-yaru .tb-btn:hover, .theme-ubuntu-yaru .tb-sys-group:hover, .theme-ubuntu-yaru .tb-clock-btn:hover { background-color: rgba(233, 84, 32, 0.15) !important; }
-.tb-tray-popup.theme-ubuntu-yaru, .tb-preview-popup.theme-ubuntu-yaru { background-color: #2c2c2c !important; border-color: rgba(233, 84, 32, 0.3) !important; }
-.theme-ubuntu-yaru .tb-tray-cell:hover, .theme-ubuntu-yaru .tb-preview-cell:hover { background-color: rgba(233, 84, 32, 0.15); }
-.theme-ubuntu-yaru .tb-tray-empty, .theme-ubuntu-yaru .tb-tray-cell-icon, .theme-ubuntu-yaru .tb-preview-title { color: #f7f7f7; }
-.tb-tooltip.theme-ubuntu-yaru { background-color: #1f1f1f; color: #f7f7f7; border-color: #e95420; }
+.theme-ubuntu-yaru .tb-sep { background-color: rgba(233, 84, 32, 0.18); }
+.theme-ubuntu-yaru .tb-act-btn:hover, .theme-ubuntu-yaru .tb-app-btn:hover, .theme-ubuntu-yaru .tb-btn:hover, .theme-ubuntu-yaru .tb-sys-group:hover, .theme-ubuntu-yaru .tb-clock-btn:hover { background-color: rgba(233, 84, 32, 0.20) !important; }
+.tb-tray-popup.theme-ubuntu-yaru, .tb-preview-popup.theme-ubuntu-yaru { background-color: #2b2724 !important; border-color: rgba(233, 84, 32, 0.45) !important; }
+.theme-ubuntu-yaru .tb-tray-cell:hover, .theme-ubuntu-yaru .tb-preview-cell:hover { background-color: rgba(233, 84, 32, 0.18); }
+.theme-ubuntu-yaru .tb-tray-empty, .theme-ubuntu-yaru .tb-tray-cell-icon, .theme-ubuntu-yaru .tb-preview-title { color: #f5f0eb; }
+.tb-tooltip.theme-ubuntu-yaru { background-color: #201e1c; color: #f5f0eb; border-color: #e95420; }
 /* Unifikacja kolorów */
-.theme-ubuntu-yaru .tb-act-btn:hover .tb-act-icon { color: #e95420 !important; }
-.theme-ubuntu-yaru .tb-btn:hover .tb-btn-icon, .theme-ubuntu-yaru .tb-sys-group:hover .tb-sys-cell-icon, .theme-ubuntu-yaru .tb-clock-btn:hover .tb-clock-time, .theme-ubuntu-yaru .tb-clock-btn:hover .tb-clock-date, .theme-ubuntu-yaru .tb-btn:hover .tb-kbd-label, .theme-ubuntu-yaru .tb-tray-cell:hover .tb-tray-cell-icon { color: #f7f7f7 !important; }
+.theme-ubuntu-yaru .tb-act-btn:hover .tb-act-icon { color: #ff6633 !important; }
+.theme-ubuntu-yaru .tb-btn:hover .tb-btn-icon, .theme-ubuntu-yaru .tb-sys-group:hover .tb-sys-cell-icon, .theme-ubuntu-yaru .tb-clock-btn:hover .tb-clock-time, .theme-ubuntu-yaru .tb-clock-btn:hover .tb-clock-date, .theme-ubuntu-yaru .tb-btn:hover .tb-kbd-label, .theme-ubuntu-yaru .tb-tray-cell:hover .tb-tray-cell-icon { color: #ffffff !important; }
 
 /* 4. Gruvbox (Złoty Standard - bez zmian) */
 .bottom-taskbar.theme-gruvbox { background-color: #282828; background-image: linear-gradient(180deg, #32302f 0%, #282828 100%); }
@@ -188,17 +188,17 @@
 .theme-solid-light .tb-btn:hover .tb-btn-icon, .theme-solid-light .tb-sys-group:hover .tb-sys-cell-icon, .theme-solid-light .tb-clock-btn:hover .tb-clock-time, .theme-solid-light .tb-clock-btn:hover .tb-clock-date, .theme-solid-light .tb-btn:hover .tb-kbd-label, .theme-solid-light .tb-tray-cell:hover .tb-tray-cell-icon { color: #1c1c1e !important; }
 
 /* 8. GNOME Dark */
-.bottom-taskbar.theme-gnome-dark { background-color: rgba(28, 28, 28, 0.95); background-image: none; }
+.bottom-taskbar.theme-gnome-dark { background-color: #1c1c1c; background-image: linear-gradient(180deg, #2e2e2e 0%, #1c1c1c 100%); }
 .theme-gnome-dark .tb-clock-time, .theme-gnome-dark .tb-clock-date, .theme-gnome-dark .tb-btn-icon, .theme-gnome-dark .tb-sys-cell-icon, .theme-gnome-dark .tb-kbd-label { color: #eeeeec; }
-.theme-gnome-dark .tb-act-icon { color: #eeeeec; }
-.theme-gnome-dark .tb-dot { background-color: #eeeeec; }
+.theme-gnome-dark .tb-act-icon { color: #3584e4; }
+.theme-gnome-dark .tb-dot { background-color: #3584e4; }
 .theme-gnome-dark .tb-notif-dot, .tb-drop-marker.theme-gnome-dark { background-color: #3584e4; }
 .theme-gnome-dark .tb-sep { background-color: rgba(255, 255, 255, 0.1); }
-.theme-gnome-dark .tb-act-btn:hover, .theme-gnome-dark .tb-app-btn:hover, .theme-gnome-dark .tb-btn:hover, .theme-gnome-dark .tb-sys-group:hover, .theme-gnome-dark .tb-clock-btn:hover { background-color: rgba(255, 255, 255, 0.1) !important; }
-.tb-tray-popup.theme-gnome-dark, .tb-preview-popup.theme-gnome-dark { background-color: #242424 !important; border-color: rgba(255, 255, 255, 0.1) !important; }
-.theme-gnome-dark .tb-tray-cell:hover, .theme-gnome-dark .tb-preview-cell:hover { background-color: rgba(255, 255, 255, 0.1); }
+.theme-gnome-dark .tb-act-btn:hover, .theme-gnome-dark .tb-app-btn:hover, .theme-gnome-dark .tb-btn:hover, .theme-gnome-dark .tb-sys-group:hover, .theme-gnome-dark .tb-clock-btn:hover { background-color: rgba(53, 132, 228, 0.14) !important; }
+.tb-tray-popup.theme-gnome-dark, .tb-preview-popup.theme-gnome-dark { background-color: #242424 !important; border-color: rgba(53, 132, 228, 0.30) !important; }
+.theme-gnome-dark .tb-tray-cell:hover, .theme-gnome-dark .tb-preview-cell:hover { background-color: rgba(53, 132, 228, 0.14); }
 .theme-gnome-dark .tb-tray-empty, .theme-gnome-dark .tb-tray-cell-icon, .theme-gnome-dark .tb-preview-title { color: #eeeeec; }
-.tb-tooltip.theme-gnome-dark { background-color: #242424; color: #eeeeec; border-color: rgba(255, 255, 255, 0.1); }
+.tb-tooltip.theme-gnome-dark { background-color: #242424; color: #eeeeec; border-color: #3584e4; }
 /* Unifikacja kolorów */
-.theme-gnome-dark .tb-act-btn:hover .tb-act-icon { color: #3584e4 !important; }
+.theme-gnome-dark .tb-act-btn:hover .tb-act-icon { color: #5fa8f5 !important; }
 .theme-gnome-dark .tb-btn:hover .tb-btn-icon, .theme-gnome-dark .tb-sys-group:hover .tb-sys-cell-icon, .theme-gnome-dark .tb-clock-btn:hover .tb-clock-time, .theme-gnome-dark .tb-clock-btn:hover .tb-clock-date, .theme-gnome-dark .tb-btn:hover .tb-kbd-label, .theme-gnome-dark .tb-tray-cell:hover .tb-tray-cell-icon { color: #eeeeec !important; }
