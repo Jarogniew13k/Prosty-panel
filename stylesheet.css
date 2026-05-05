@@ -84,38 +84,36 @@
 .tb-tooltip { border-width : 1px; border-style : solid; border-radius : 6px; padding-top : 4px; padding-bottom : 4px; padding-left : 10px; padding-right : 10px; font-size : 12px; }
 
 /* ==========================================================================
-   MOTYWY (ZE ZGODNYMI KOLORAMI PO NAJECHANIU MYSZKĄ)
+   MOTYWY (LEWA: MOCNY AKCENT, PRAWA: ZGASZONY / STONOWANY ODPOWIEDNIK)
    ========================================================================== */
 
-/* 1. Cyberpunk */
+/* 1. Cyberpunk (Akcent: Ostry Róż #ff007f -> Wyraźniejszy pastelowy róż #ff9eca) */
 .bottom-taskbar.theme-cyberpunk { background-color: #0b0914; background-image: linear-gradient(180deg, #160f2e 0%, #0b0914 100%); }
-.theme-cyberpunk .tb-clock-time, .theme-cyberpunk .tb-clock-date, .theme-cyberpunk .tb-btn-icon, .theme-cyberpunk .tb-sys-cell-icon, .theme-cyberpunk .tb-kbd-label { color: #e2e8f0; }
+.theme-cyberpunk .tb-clock-time, .theme-cyberpunk .tb-clock-date, .theme-cyberpunk .tb-btn-icon, .theme-cyberpunk .tb-sys-cell-icon, .theme-cyberpunk .tb-kbd-label { color: #fcee0a; } /* Cyberpunkowy żółty */
 .theme-cyberpunk .tb-act-icon { color: #ff007f; }
 .theme-cyberpunk .tb-dot, .theme-cyberpunk .tb-notif-dot, .tb-drop-marker.theme-cyberpunk { background-color: #ff007f; }
-.theme-cyberpunk .tb-sep { background-color: rgba(255, 255, 255, 0.1); }
+.theme-cyberpunk .tb-sep { background-color: rgba(252, 238, 10, 0.15); }
 .theme-cyberpunk .tb-act-btn:hover, .theme-cyberpunk .tb-app-btn:hover, .theme-cyberpunk .tb-btn:hover, .theme-cyberpunk .tb-sys-group:hover, .theme-cyberpunk .tb-clock-btn:hover { background-color: rgba(255, 0, 127, 0.15) !important; }
 .tb-tray-popup.theme-cyberpunk, .tb-preview-popup.theme-cyberpunk { background-color: #110d18 !important; border-color: rgba(255, 0, 127, 0.3) !important; }
 .theme-cyberpunk .tb-tray-cell:hover, .theme-cyberpunk .tb-preview-cell:hover { background-color: rgba(255, 0, 127, 0.15); }
-.theme-cyberpunk .tb-tray-empty, .theme-cyberpunk .tb-tray-cell-icon, .theme-cyberpunk .tb-preview-title { color: #e2e8f0; }
-.tb-tooltip.theme-cyberpunk { background-color: #160f2e; color: #ff007f; border-color: #ff007f; }
-/* Unifikacja kolorów ikon i zegara po najechaniu (brak różnic) */
+.theme-cyberpunk .tb-tray-empty, .theme-cyberpunk .tb-tray-cell-icon, .theme-cyberpunk .tb-preview-title { color: #fcee0a; }
+.tb-tooltip.theme-cyberpunk { background-color: #160f2e; color: #fcee0a; border-color: #ff007f; }
 .theme-cyberpunk .tb-act-btn:hover .tb-act-icon { color: #ff007f !important; }
-.theme-cyberpunk .tb-btn:hover .tb-btn-icon, .theme-cyberpunk .tb-sys-group:hover .tb-sys-cell-icon, .theme-cyberpunk .tb-clock-btn:hover .tb-clock-time, .theme-cyberpunk .tb-clock-btn:hover .tb-clock-date, .theme-cyberpunk .tb-btn:hover .tb-kbd-label, .theme-cyberpunk .tb-tray-cell:hover .tb-tray-cell-icon { color: #e2e8f0 !important; }
+.theme-cyberpunk .tb-btn:hover .tb-btn-icon, .theme-cyberpunk .tb-sys-group:hover .tb-sys-cell-icon, .theme-cyberpunk .tb-clock-btn:hover .tb-clock-time, .theme-cyberpunk .tb-clock-btn:hover .tb-clock-date, .theme-cyberpunk .tb-btn:hover .tb-kbd-label, .theme-cyberpunk .tb-tray-cell:hover .tb-tray-cell-icon { color: #fcee0a !important; }
 
-/* 2. Dracula */
+/* 2. Dracula (Akcent: Fiolet #bd93f9 -> Zgaszona lawenda #dccaf5) */
 .bottom-taskbar.theme-dracula { background-color: #282a36; background-image: linear-gradient(180deg, #282a36 0%, #1e1f29 100%); }
-.theme-dracula .tb-clock-time, .theme-dracula .tb-clock-date, .theme-dracula .tb-btn-icon, .theme-dracula .tb-sys-cell-icon, .theme-dracula .tb-kbd-label { color: #f8f8f2; }
+.theme-dracula .tb-clock-time, .theme-dracula .tb-clock-date, .theme-dracula .tb-btn-icon, .theme-dracula .tb-sys-cell-icon, .theme-dracula .tb-kbd-label { color: #dccaf5; }
 .theme-dracula .tb-act-icon { color: #bd93f9; }
 .theme-dracula .tb-dot, .theme-dracula .tb-notif-dot, .tb-drop-marker.theme-dracula { background-color: #ff79c6; }
-.theme-dracula .tb-sep { background-color: rgba(248, 248, 242, 0.1); }
+.theme-dracula .tb-sep { background-color: rgba(220, 202, 245, 0.15); }
 .theme-dracula .tb-act-btn:hover, .theme-dracula .tb-app-btn:hover, .theme-dracula .tb-btn:hover, .theme-dracula .tb-sys-group:hover, .theme-dracula .tb-clock-btn:hover { background-color: rgba(189, 147, 249, 0.15) !important; }
 .tb-tray-popup.theme-dracula, .tb-preview-popup.theme-dracula { background-color: #282a36 !important; border-color: rgba(189, 147, 249, 0.3) !important; }
 .theme-dracula .tb-tray-cell:hover, .theme-dracula .tb-preview-cell:hover { background-color: rgba(189, 147, 249, 0.15); }
-.theme-dracula .tb-tray-empty, .theme-dracula .tb-tray-cell-icon, .theme-dracula .tb-preview-title { color: #f8f8f2; }
-.tb-tooltip.theme-dracula { background-color: #1e1f29; color: #f8f8f2; border-color: #bd93f9; }
-/* Unifikacja kolorów */
+.theme-dracula .tb-tray-empty, .theme-dracula .tb-tray-cell-icon, .theme-dracula .tb-preview-title { color: #dccaf5; }
+.tb-tooltip.theme-dracula { background-color: #1e1f29; color: #dccaf5; border-color: #bd93f9; }
 .theme-dracula .tb-act-btn:hover .tb-act-icon { color: #bd93f9 !important; }
-.theme-dracula .tb-btn:hover .tb-btn-icon, .theme-dracula .tb-sys-group:hover .tb-sys-cell-icon, .theme-dracula .tb-clock-btn:hover .tb-clock-time, .theme-dracula .tb-clock-btn:hover .tb-clock-date, .theme-dracula .tb-btn:hover .tb-kbd-label, .theme-dracula .tb-tray-cell:hover .tb-tray-cell-icon { color: #f8f8f2 !important; }
+.theme-dracula .tb-btn:hover .tb-btn-icon, .theme-dracula .tb-sys-group:hover .tb-sys-cell-icon, .theme-dracula .tb-clock-btn:hover .tb-clock-time, .theme-dracula .tb-clock-btn:hover .tb-clock-date, .theme-dracula .tb-btn:hover .tb-kbd-label, .theme-dracula .tb-tray-cell:hover .tb-tray-cell-icon { color: #dccaf5 !important; }
 
 /* 3. Ubuntu Yaru */
 .bottom-taskbar.theme-ubuntu-yaru { background-color: #1f1f1f; background-image: linear-gradient(180deg, #2c2c2c 0%, #1f1f1f 100%); }
@@ -132,7 +130,7 @@
 .theme-ubuntu-yaru .tb-act-btn:hover .tb-act-icon { color: #e95420 !important; }
 .theme-ubuntu-yaru .tb-btn:hover .tb-btn-icon, .theme-ubuntu-yaru .tb-sys-group:hover .tb-sys-cell-icon, .theme-ubuntu-yaru .tb-clock-btn:hover .tb-clock-time, .theme-ubuntu-yaru .tb-clock-btn:hover .tb-clock-date, .theme-ubuntu-yaru .tb-btn:hover .tb-kbd-label, .theme-ubuntu-yaru .tb-tray-cell:hover .tb-tray-cell-icon { color: #f7f7f7 !important; }
 
-/* 4. Gruvbox */
+/* 4. Gruvbox (Złoty Standard - bez zmian) */
 .bottom-taskbar.theme-gruvbox { background-color: #282828; background-image: linear-gradient(180deg, #32302f 0%, #282828 100%); }
 .theme-gruvbox .tb-clock-time, .theme-gruvbox .tb-clock-date, .theme-gruvbox .tb-btn-icon, .theme-gruvbox .tb-sys-cell-icon, .theme-gruvbox .tb-kbd-label { color: #ebdbb2; }
 .theme-gruvbox .tb-act-icon { color: #b8bb26; }
@@ -143,24 +141,22 @@
 .theme-gruvbox .tb-tray-cell:hover, .theme-gruvbox .tb-preview-cell:hover { background-color: rgba(184, 187, 38, 0.15); }
 .theme-gruvbox .tb-tray-empty, .theme-gruvbox .tb-tray-cell-icon, .theme-gruvbox .tb-preview-title { color: #ebdbb2; }
 .tb-tooltip.theme-gruvbox { background-color: #282828; color: #ebdbb2; border-color: #b8bb26; }
-/* Unifikacja kolorów */
 .theme-gruvbox .tb-act-btn:hover .tb-act-icon { color: #b8bb26 !important; }
 .theme-gruvbox .tb-btn:hover .tb-btn-icon, .theme-gruvbox .tb-sys-group:hover .tb-sys-cell-icon, .theme-gruvbox .tb-clock-btn:hover .tb-clock-time, .theme-gruvbox .tb-clock-btn:hover .tb-clock-date, .theme-gruvbox .tb-btn:hover .tb-kbd-label, .theme-gruvbox .tb-tray-cell:hover .tb-tray-cell-icon { color: #ebdbb2 !important; }
 
-/* 5. Nordic */
+/* 5. Nordic (Akcent: Chłodny Niebieski #88c0d0 -> Zgaszony lodowy #b8d2d9) */
 .bottom-taskbar.theme-nordic { background-color: #2e3440; background-image: linear-gradient(180deg, #3b4252 0%, #2e3440 100%); }
-.theme-nordic .tb-clock-time, .theme-nordic .tb-clock-date, .theme-nordic .tb-btn-icon, .theme-nordic .tb-sys-cell-icon, .theme-nordic .tb-kbd-label { color: #eceff4; }
+.theme-nordic .tb-clock-time, .theme-nordic .tb-clock-date, .theme-nordic .tb-btn-icon, .theme-nordic .tb-sys-cell-icon, .theme-nordic .tb-kbd-label { color: #b8d2d9; }
 .theme-nordic .tb-act-icon { color: #88c0d0; }
 .theme-nordic .tb-dot, .theme-nordic .tb-notif-dot, .tb-drop-marker.theme-nordic { background-color: #88c0d0; }
-.theme-nordic .tb-sep { background-color: rgba(236, 239, 244, 0.1); }
+.theme-nordic .tb-sep { background-color: rgba(184, 210, 217, 0.15); }
 .theme-nordic .tb-act-btn:hover, .theme-nordic .tb-app-btn:hover, .theme-nordic .tb-btn:hover, .theme-nordic .tb-sys-group:hover, .theme-nordic .tb-clock-btn:hover { background-color: rgba(136, 192, 208, 0.15) !important; }
 .tb-tray-popup.theme-nordic, .tb-preview-popup.theme-nordic { background-color: #3b4252 !important; border-color: rgba(136, 192, 208, 0.3) !important; }
 .theme-nordic .tb-tray-cell:hover, .theme-nordic .tb-preview-cell:hover { background-color: rgba(136, 192, 208, 0.15); }
-.theme-nordic .tb-tray-empty, .theme-nordic .tb-tray-cell-icon, .theme-nordic .tb-preview-title { color: #eceff4; }
-.tb-tooltip.theme-nordic { background-color: #2e3440; color: #eceff4; border-color: #88c0d0; }
-/* Unifikacja kolorów */
+.theme-nordic .tb-tray-empty, .theme-nordic .tb-tray-cell-icon, .theme-nordic .tb-preview-title { color: #b8d2d9; }
+.tb-tooltip.theme-nordic { background-color: #2e3440; color: #b8d2d9; border-color: #88c0d0; }
 .theme-nordic .tb-act-btn:hover .tb-act-icon { color: #88c0d0 !important; }
-.theme-nordic .tb-btn:hover .tb-btn-icon, .theme-nordic .tb-sys-group:hover .tb-sys-cell-icon, .theme-nordic .tb-clock-btn:hover .tb-clock-time, .theme-nordic .tb-clock-btn:hover .tb-clock-date, .theme-nordic .tb-btn:hover .tb-kbd-label, .theme-nordic .tb-tray-cell:hover .tb-tray-cell-icon { color: #eceff4 !important; }
+.theme-nordic .tb-btn:hover .tb-btn-icon, .theme-nordic .tb-sys-group:hover .tb-sys-cell-icon, .theme-nordic .tb-clock-btn:hover .tb-clock-time, .theme-nordic .tb-clock-btn:hover .tb-clock-date, .theme-nordic .tb-btn:hover .tb-kbd-label, .theme-nordic .tb-tray-cell:hover .tb-tray-cell-icon { color: #b8d2d9 !important; }
 
 /* 6. Solid Dark */
 .bottom-taskbar.theme-solid-dark { background-color: #000000; background-image: none; }
