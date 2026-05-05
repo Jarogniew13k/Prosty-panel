@@ -3,7 +3,7 @@
   "description": "Czysty, funkcjonalny pasek zadań na dole ekranu — ikony aplikacji, taca systemowa, zegar i przycisk Aktywności.",
   "uuid": "gnome-panel@user.local",
   "version": 1,
-  "shell-version": ["45", "46", "47", "48", "49"],
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
   "settings-schema": "org.gnome.shell.extensions.gnome-panel",
   "url": ""
 }
