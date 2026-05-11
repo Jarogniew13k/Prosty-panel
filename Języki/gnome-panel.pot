@@ -1,0 +1,165 @@
+# Prosty Panel — szablon tłumaczeń (POT)
+# Język źródłowy: polski (msgid = polski string)
+# Przy braku pliku .mo gettext zwraca msgid — czyli polski tekst.
+#
+# Aby dodać nowy język (np. angielski):
+#   1. Skopiuj ten plik jako en.po
+#   2. Wypełnij pola msgstr tłumaczeniem
+#   3. Uruchom install.sh — skompiluje .po → .mo automatycznie
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Prosty Panel 1\n"
+"POT-Creation-Date: 2025-01-01 00:00+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+# ── activities.js ────────────────────────────────────────────
+#: activities.js
+msgid "Opcje zasilania"
+msgstr ""
+
+#: activities.js
+msgid "Dziennik zdarzeń"
+msgstr ""
+
+#: activities.js
+msgid "System"
+msgstr ""
+
+#: activities.js
+msgid "Zarządzanie dyskami"
+msgstr ""
+
+#: activities.js
+msgid "System monitor"
+msgstr ""
+
+#: activities.js
+msgid "Files"
+msgstr ""
+
+#: activities.js classicpanel.js
+msgid "Ustawienia GNOME"
+msgstr ""
+
+#: activities.js classicpanel.js
+msgid "Ustawienia panelu"
+msgstr ""
+
+# ── appbutton.js ─────────────────────────────────────────────
+#: appbutton.js
+msgid "Otwórz"
+msgstr ""
+
+#: appbutton.js
+msgid "Nowe okno"
+msgstr ""
+
+#: appbutton.js
+msgid "Przypnij"
+msgstr ""
+
+#: appbutton.js
+msgid "Odepnij"
+msgstr ""
+
+#: appbutton.js
+msgid "Zamknij"
+msgstr ""
+
+# ── classicpanel.js ──────────────────────────────────────────
+#: classicpanel.js
+msgid "Monitor systemu"
+msgstr ""
+
+#: classicpanel.js
+msgid "Pliki"
+msgstr ""
+
+#: classicpanel.js
+msgid "Pokaż pulpit"
+msgstr ""
+
+# ── extra-status.js ──────────────────────────────────────────
+#: extra-status.js
+msgid "Udostępnianie"
+msgstr ""
+
+# ── prefs.js ─────────────────────────────────────────────────
+#: prefs.js
+msgid "Ustawienia"
+msgstr ""
+
+#: prefs.js
+msgid "Tryb paska"
+msgstr ""
+
+#: prefs.js
+msgid "Tryb"
+msgstr ""
+
+#: prefs.js
+msgid "Zmiana wymaga ponownego przeładowania"
+msgstr ""
+
+#: prefs.js
+msgid "Auto-ukrywanie"
+msgstr ""
+
+#: prefs.js
+msgid "Włącz auto-ukrywanie (tylko tryb pływający)"
+msgstr ""
+
+#: prefs.js
+msgid "Motyw paska"
+msgstr ""
+
+#: prefs.js
+msgid "Motyw"
+msgstr ""
+
+#: prefs.js
+msgid "Klasyczny — pasek przyklejony do krawędzi"
+msgstr ""
+
+#: prefs.js
+msgid "Pływający — pasek z marginesem, tapeta widoczna pod nim"
+msgstr ""
+
+#: prefs.js
+msgid "Cyberpunk — Głęboka czerń z neonowym różem"
+msgstr ""
+
+#: prefs.js
+msgid "Dracula — Klasyczny fiolet (Dracula Theme)"
+msgstr ""
+
+#: prefs.js
+msgid "Ubuntu Yaru — Ciemny grafit z pomarańczą"
+msgstr ""
+
+#: prefs.js
+msgid "Gruvbox — Retro ciemny z matową zielenią"
+msgstr ""
+
+#: prefs.js
+msgid "Nordic — Chłodny, arktyczny błękit (Nord)"
+msgstr ""
+
+#: prefs.js
+msgid "Onyx Black — Czysta, absolutna czerń z bielą"
+msgstr ""
+
+#: prefs.js
+msgid "Solid Light — Jasny, neutralny motyw"
+msgstr ""
+
+#: prefs.js
+msgid "GNOME Dark — Domyślny ciemny motyw systemu"
+msgstr ""
