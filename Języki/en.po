@@ -1,0 +1,117 @@
+# Prosty Panel — English translation
+# Język źródłowy: polski (msgid = polski string)
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Prosty Panel 1\n"
+"PO-Revision-Date: 2025-01-01 00:00+0000\n"
+"Language-Team: English\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+# ── Wspólne (activities.js + classicpanel.js) ────────────────
+msgid "Ustawienia GNOME"
+msgstr "GNOME Settings"
+
+msgid "Ustawienia panelu"
+msgstr "Panel Settings"
+
+msgid "Monitor systemu"
+msgstr "System Monitor"
+
+msgid "Pliki"
+msgstr "Files"
+
+# ── activities.js ────────────────────────────────────────────
+msgid "Opcje zasilania"
+msgstr "Power Options"
+
+msgid "Dziennik zdarzeń"
+msgstr "Event Log"
+
+msgid "System"
+msgstr "System"
+
+msgid "Zarządzanie dyskami"
+msgstr "Disk Management"
+
+# ── appbutton.js ─────────────────────────────────────────────
+msgid "Otwórz"
+msgstr "Open"
+
+msgid "Nowe okno"
+msgstr "New Window"
+
+msgid "Przypnij"
+msgstr "Pin"
+
+msgid "Odepnij"
+msgstr "Unpin"
+
+msgid "Zamknij"
+msgstr "Close"
+
+# ── classicpanel.js ──────────────────────────────────────────
+msgid "Pokaż pulpit"
+msgstr "Show Desktop"
+
+# ── extra-status.js ──────────────────────────────────────────
+msgid "Udostępnianie"
+msgstr "Sharing"
+
+# ── prefs.js ─────────────────────────────────────────────────
+msgid "Ustawienia"
+msgstr "Settings"
+
+msgid "Tryb paska"
+msgstr "Panel Mode"
+
+msgid "Tryb"
+msgstr "Mode"
+
+msgid "Zmiana wymaga ponownego przeładowania"
+msgstr "Requires reload to take effect"
+
+msgid "Auto-ukrywanie"
+msgstr "Auto-Hide"
+
+msgid "Włącz auto-ukrywanie (tylko tryb pływający)"
+msgstr "Enable auto-hide (floating mode only)"
+
+msgid "Motyw paska"
+msgstr "Panel Theme"
+
+msgid "Motyw"
+msgstr "Theme"
+
+msgid "Klasyczny — pasek przyklejony do krawędzi"
+msgstr "Classic — Taskbar pinned to screen edge"
+
+msgid "Pływający — pasek z marginesem, tapeta widoczna pod nim"
+msgstr "Floating — Taskbar with margin, wallpaper visible underneath"
+
+msgid "Cyberpunk — Głęboka czerń z neonowym różem"
+msgstr "Cyberpunk — Deep black with neon pink"
+
+msgid "Dracula — Klasyczny fiolet (Dracula Theme)"
+msgstr "Dracula — Classic purple (Dracula Theme)"
+
+msgid "Ubuntu Yaru — Ciemny grafit z pomarańczą"
+msgstr "Ubuntu Yaru — Dark graphite with orange"
+
+msgid "Gruvbox — Retro ciemny z matową zielenią"
+msgstr "Gruvbox — Retro dark with muted green"
+
+msgid "Nordic — Chłodny, arktyczny błękit (Nord)"
+msgstr "Nordic — Cool arctic blue (Nord)"
+
+msgid "Onyx Black — Czysta, absolutna czerń z bielą"
+msgstr "Onyx Black — Pure, absolute black with white"
+
+msgid "Solid Light — Jasny, neutralny motyw"
+msgstr "Solid Light — Bright, neutral theme"
+
+msgid "GNOME Dark — Domyślny ciemny motyw systemu"
+msgstr "GNOME Dark — Default system dark theme"
