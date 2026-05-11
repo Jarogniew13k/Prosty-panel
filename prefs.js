@@ -22,20 +22,21 @@ const THEMES = [
 
 export default class ProstyPanelPrefs extends ExtensionPreferences {
     fillPreferencesWindow(window) {
+        const _ = this.gettext.bind(this);
         const settings = this.getSettings();
 
         const page = new Adw.PreferencesPage({
-            title     : 'Ustawienia',
+            title     : _('Ustawienia'),
             icon_name : 'preferences-desktop-symbolic',
         });
         window.add(page);
 
-        const modeGroup = new Adw.PreferencesGroup({ title: 'Tryb paska' });
+        const modeGroup = new Adw.PreferencesGroup({ title: _('Tryb paska') });
         page.add(modeGroup);
 
-        const modeRow = new Adw.ComboRow({ title: 'Tryb', subtitle: 'Zmiana wymaga ponownego przeładowania' });
+        const modeRow = new Adw.ComboRow({ title: _('Tryb'), subtitle: _('Zmiana wymaga ponownego przeładowania') });
         const modeModel = new Gtk.StringList();
-        for (const m of MODES) modeModel.append(m.name);
+        for (const m of MODES) modeModel.append(_(m.name));
         modeRow.model = modeModel;
 
         const currentMode = settings.get_string('mode');
@@ -48,22 +49,22 @@ export default class ProstyPanelPrefs extends ExtensionPreferences {
         });
         modeGroup.add(modeRow);
 
-        const ahGroup = new Adw.PreferencesGroup({ title: 'Auto-ukrywanie' });
+        const ahGroup = new Adw.PreferencesGroup({ title: _('Auto-ukrywanie') });
         page.add(ahGroup);
 
-        const ahRow = new Adw.SwitchRow({ title: 'Włącz auto-ukrywanie (tylko tryb pływający)' });
+        const ahRow = new Adw.SwitchRow({ title: _('Włącz auto-ukrywanie (tylko tryb pływający)') });
         ahRow.active = settings.get_boolean('auto-hide');
         ahRow.connect('notify::active', () => {
             settings.set_boolean('auto-hide', ahRow.active);
         });
         ahGroup.add(ahRow);
 
-        const themeGroup = new Adw.PreferencesGroup({ title: 'Motyw paska' });
+        const themeGroup = new Adw.PreferencesGroup({ title: _('Motyw paska') });
         page.add(themeGroup);
 
-        const themeRow = new Adw.ComboRow({ title: 'Motyw' });
+        const themeRow = new Adw.ComboRow({ title: _('Motyw') });
         const themeModel = new Gtk.StringList();
-        for (const t of THEMES) themeModel.append(t.name);
+        for (const t of THEMES) themeModel.append(_(t.name));
         themeRow.model = themeModel;
 
         let currentTheme = settings.get_string('theme');

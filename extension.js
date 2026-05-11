@@ -8,6 +8,10 @@ import { FloatPanel }   from './floatpanel.js';
 
 export default class ProstyPanel extends Extension {
     enable() {
+        // Inicjalizacja tłumaczeń — ładuje locale/<lang>/LC_MESSAGES/gnome-panel.mo
+        // Domena pochodzi z pola "gettext-domain" w metadata.json
+        this.initTranslations();
+
         this._enabled = true;
         this._settings = this.getSettings();
         this._rebuildPending = 0;

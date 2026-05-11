@@ -6,6 +6,7 @@ import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as Keyboard from 'resource:///org/gnome/shell/ui/status/keyboard.js';
 import { openMenuAboveBar } from './utils.js';
+import { _ } from './i18n.js';
 
 export function buildExtraStatus(host) {
     const box = new St.BoxLayout({
@@ -49,7 +50,7 @@ export function buildExtraStatus(host) {
     });
     const shareBox = new St.BoxLayout({ y_align: Clutter.ActorAlign.CENTER, style: 'spacing: 6px;' });
     const shareIcon = new St.Icon({ icon_name: 'camera-web-symbolic', icon_size: 14, style: 'color: #ffffff;' });
-    const shareLabel = new St.Label({ style_class: 'tb-rec-label', y_align: Clutter.ActorAlign.CENTER, text: 'Udostępnianie' });
+    const shareLabel = new St.Label({ style_class: 'tb-rec-label', y_align: Clutter.ActorAlign.CENTER, text: _('Udostępnianie') });
     shareBox.add_child(shareIcon); shareBox.add_child(shareLabel); shareBtn.set_child(shareBox);
 
     shareBtn.connect('clicked', () => {

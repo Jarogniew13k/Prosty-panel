@@ -12,6 +12,7 @@ import * as PopupMenu    from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import { ICON_SIZE, HOVER_DELAY_MS, HIDE_DELAY_MS, PREVIEW_W, PREVIEW_H } from './constants.js';
 import { openMenuAboveBar } from './utils.js';
+import { _ } from './i18n.js';
 
 function killAllTransitions(actor) {
     if (!actor) return;
@@ -356,12 +357,12 @@ export const AppButton = GObject.registerClass({
         const favs = AppFavorites.getAppFavorites(); const appId = app.get_id(); const isFav = favs.isFavorite(appId);
         
         if (isRun) {
-            const openItem = new PopupMenu.PopupMenuItem('Otwórz');
+            const openItem = new PopupMenu.PopupMenuItem(_('Otwórz'));
             openItem.connect('activate', () => { Main.activateWindow(wins[0]); });
             this._menu.addMenuItem(openItem);
         }
         
-        const newItem = new PopupMenu.PopupMenuItem('Nowe okno');
+        const newItem = new PopupMenu.PopupMenuItem(_('Nowe okno'));
         newItem.connect('activate', () => { 
             if (typeof app.can_open_new_window === 'function' && app.can_open_new_window()) {
                 app.open_new_window(-1);
@@ -373,7 +374,7 @@ export const AppButton = GObject.registerClass({
         
         this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         
-        const pinItem = new PopupMenu.PopupMenuItem(isFav ? 'Odepnij' : 'Przypnij');
+        const pinItem = new PopupMenu.PopupMenuItem(isFav ? _('Odepnij') : _('Przypnij'));
         pinItem.connect('activate', () => { 
             GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
                 isFav ? favs.removeFavorite(appId) : favs.addFavorite(appId);
@@ -384,7 +385,7 @@ export const AppButton = GObject.registerClass({
         
         if (isRun) {
             this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-            const closeItem = new PopupMenu.PopupMenuItem('Zamknij');
+            const closeItem = new PopupMenu.PopupMenuItem(_('Zamknij'));
             closeItem.connect('activate', () => { for (const w of app.get_windows()) w.delete(global.get_current_time()); });
             this._menu.addMenuItem(closeItem);
         }

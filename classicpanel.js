@@ -17,6 +17,7 @@ import { buildTrayArrow, closeTrayPopup } from './tray-popup.js';
 import { buildSystemGroup }   from './system-group.js';
 import { buildClock }         from './clock.js';
 import { buildExtraStatus }   from './extra-status.js';
+import { _ }                  from './i18n.js';
 
 export const BottomTaskbar = GObject.registerClass({
     Signals: { 
@@ -106,12 +107,12 @@ export const BottomTaskbar = GObject.registerClass({
             this._spacerMenu.addMenuItem(item);
         };
 
-        addSpacerMenuItem('Monitor systemu', ['gnome-system-monitor']);
-        addSpacerMenuItem('Pliki', ['nautilus']);
+        addSpacerMenuItem(_('Monitor systemu'), ['gnome-system-monitor']);
+        addSpacerMenuItem(_('Pliki'), ['nautilus']);
         this._spacerMenu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        addSpacerMenuItem('Ustawienia GNOME', ['gnome-control-center']);
+        addSpacerMenuItem(_('Ustawienia GNOME'), ['gnome-control-center']);
         
-        addSpacerMenuItem('Ustawienia panelu', null, () => {
+        addSpacerMenuItem(_('Ustawienia panelu'), null, () => {
             try {
                 const ext = Extension.lookupByURL(import.meta.url);
                 if (ext && typeof ext.openPreferences === 'function') {
@@ -124,7 +125,7 @@ export const BottomTaskbar = GObject.registerClass({
         });
         
         this._spacerMenu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        addSpacerMenuItem('Pokaż pulpit', null, () => {
+        addSpacerMenuItem(_('Pokaż pulpit'), null, () => {
             const ws = global.workspace_manager.get_active_workspace();
             const windows = ws.list_windows().filter(w => w.get_window_type() === 0);
             const allMinimized = windows.every(w => w.minimized);

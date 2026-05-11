@@ -9,6 +9,7 @@ import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import { ICON_SIZE } from './constants.js';
 import { openMenuAboveBar } from './utils.js';
+import { _ } from './i18n.js';
 
 export function buildActivities() {
     const btn = new St.Button({
@@ -56,21 +57,21 @@ export function buildActivities() {
     };
 
     // Opcje systemowe z komendami
-    addMenuItem('Opcje zasilania', ['gnome-control-center', 'power']);
-    addMenuItem('Dziennik zdarzeń', ['gnome-logs']);
-    addMenuItem('System', ['gnome-control-center', 'system']);
-    addMenuItem('Zarządzanie dyskami', ['gnome-disks']);
+    addMenuItem(_('Opcje zasilania'), ['gnome-control-center', 'power']);
+    addMenuItem(_('Dziennik zdarzeń'), ['gnome-logs']);
+    addMenuItem(_('System'), ['gnome-control-center', 'system']);
+    addMenuItem(_('Zarządzanie dyskami'), ['gnome-disks']);
     
     btn._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
     
-    addMenuItem('System monitor', ['gnome-system-monitor']);
-    addMenuItem('Files', ['nautilus']);
+    addMenuItem(_('Monitor systemu'), ['gnome-system-monitor']);
+    addMenuItem(_('Pliki'), ['nautilus']);
     
     btn._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
     
-    addMenuItem('Ustawienia GNOME', ['gnome-control-center']);
+    addMenuItem(_('Ustawienia GNOME'), ['gnome-control-center']);
     
-    const prefsItem = new PopupMenu.PopupMenuItem('Ustawienia panelu');
+    const prefsItem = new PopupMenu.PopupMenuItem(_('Ustawienia panelu'));
     prefsItem.connect('activate', () => {
         try {
             const ext = Extension.lookupByURL(import.meta.url);
