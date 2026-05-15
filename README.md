@@ -64,7 +64,6 @@ gnome-extensions enable "$UUID"
 ## Po instalacji
 
 - Wayland: wyloguj się i zaloguj ponownie  
-- X11: Alt + F2 → r → Enter  
 
 ---
 
