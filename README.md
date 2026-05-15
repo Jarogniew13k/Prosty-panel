@@ -5,7 +5,7 @@
 
 Czysty, funkcjonalny pasek zadań na dole ekranu dla GNOME Shell.  
 Łączy w sobie najpotrzebniejsze elementy – ikony aplikacji, tacę systemową, zegar i przycisk Aktywności.  
-Działa od razu po instalacji, a ustawienia są minimalistyczne – żadnych zbędnych opcji. Posiada własny, lekki backend tacy systemowej i dba o minimalne zużycie pamięci.
+Działa od razu po instalacji, a ustawienia są minimalistyczne – żadnych zbędnych opcji.
 
 ---
 
@@ -16,80 +16,99 @@ Działa od razu po instalacji, a ustawienia są minimalistyczne – żadnych zb�
 | **Tryb klasyczny** | Pasek przyklejony do krawędzi, rezerwuje miejsce (okna go nie zasłaniają). |
 | **Tryb pływający** | Pasek unosi się nad pulpitem (margines 8 px, zaokrąglone rogi, rozmycie tła). |
 | **Auto-ukrywanie (pływający)** | Pasek znika przy nachodzeniu okna i pojawia się przy krawędzi (1 px) lub po najechaniu. |
-| **Inteligentne wykrywanie** | Rozszerzone strefy, blokada w fullscreen, płynne animacje. Obejścia dla restrykcji Waylanda. |
-| **Przycisk Aktywności** | Otwiera GNOME Overview; pasek widoczny także w tym widoku. Opcje zasilania pod PPM. |
-| **Ikony aplikacji** | Ulubione + uruchomione, precyzyjne wskaźniki aktywności, podgląd okien. |
+| **Inteligentne wykrywanie** | Rozszerzone strefy, blokada w fullscreen, płynne animacje. |
+| **Przycisk Aktywności** | Otwiera GNOME Overview; pasek widoczny także w tym widoku. |
+| **Ikony aplikacji** | Ulubione + uruchomione, wskaźniki aktywności. |
 | **Menu kontekstowe** | PPM: Otwórz, Nowe okno, Przypnij/Odepnij, Zamknij. |
-| **Przeciąganie ikon** | Zmiana kolejności, przypinanie i odpinanie (Drag & Drop). |
-| **Zaawansowany Status** | Obsługa nagrywania ekranu, udostępniania, aplikacji w tle oraz układu klawiatury. |
-| **Taca systemowa** | Zoptymalizowany popup SNI po D-Bus (Discord, Steam itd.) bez zewnętrznych zależności. |
-| **Grupa systemowa** | Szybkie ustawienia GNOME (Wi-Fi, dźwięk, Bluetooth, VPN itd.). |
-| **Zegar** | Data + powiadomienia (wskazanie kropką). |
-| **Motywy** | 8 wbudowanych schematów kolorów (m.in. Cyberpunk, Dracula, Gruvbox, Nordic). |
-| **Tłumaczenia (i18n)** | Obsługa wielu języków poprzez standard gettext. |
+| **Przeciąganie ikon** | Zmiana kolejności i odpinanie. |
+| **Taca systemowa** | Popup z AppIndicator (Discord, Steam itd.). |
+| **Grupa systemowa** | Szybkie ustawienia GNOME (Wi-Fi, dźwięk itd.). |
+| **Zegar** | Data + powiadomienia. |
+| **Motywy** | Gotowe schematy kolorów. |
+| **Wayland** | disable-unredirect zapobiega znikaniu paska. |
 
 ---
 
 ## Wymagania
 
-- GNOME Shell 45–50
+- GNOME Shell 45–48+
 - GJS
-- Pakiet `gettext` (do kompilacji tłumaczeń podczas instalacji)
+- PulseAudio lub PipeWire
 
 ---
 
 ## Instalacja
 
 ### Metoda 1 - skrypt (zalecana)
-Skrypt automatycznie skompiluje schematy GSettings oraz pliki językowe `.po` na `.mo`. Uruchom:
+Uruchom:
 ```bash
 chmod +x install.sh
 ./install.sh
-Metoda 2 - ręczna
-Wymaga ręcznej kompilacji schematów i tłumaczeń:
+```
 
-Bash
+### Metoda 2 - ręczna
+```bash
 UUID="gnome-panel@user.local"
 DEST="$HOME/.local/share/gnome-shell/extensions/$UUID"
 
 mkdir -p "$DEST"
-cp -r metadata.json extension.js stylesheet.css prefs.js *.js Języki schemas "$DEST/"
-glib-compile-schemas "$DEST/schemas/"
+cp metadata.json extension.js stylesheet.css prefs.js *.js "$DEST/"
 
 gnome-extensions enable "$UUID"
-Po instalacji
-Wayland: wyloguj się i zaloguj ponownie (wymagane, aby odświeżyć klucze GSettings i tłumaczenia)
+```
 
-X11: Alt + F2 → r → Enter
+---
 
-Konfiguracja
-Bash
+## Po instalacji
+
+- Wayland: wyloguj się i zaloguj ponownie  
+- X11: Alt + F2 → r → Enter  
+
+---
+
+## Konfiguracja
+
+```bash
 gnome-extensions prefs gnome-panel@user.local
+```
+
 Opcje:
+- Tryb: klasyczny / pływający  
+- Auto-ukrywanie  
+- disable-unredirect 
+- Motyw  
 
-Tryb: klasyczny / pływający
+---
 
-Auto-ukrywanie (dostępne tylko dla trybu pływającego)
+## Odinstalowanie
 
-Motyw (aplikowany natychmiast)
-
-(Uwaga: zarządzanie omijaniem kompozytora - disable-unredirect dla trybu pływającego na Wayland - odbywa się teraz w pełni automatycznie "pod maską").
-
-Znane ograniczenia i porady
-Aplikacje z Wine/Lutris w tacy systemowej: Jeśli ikony aplikacji emulowanych przez Wine otwierają się jako osobne, małe okienka na pulpicie (zamiast pojawić się w panelu), wynika to z faktu, że Wine używa przestarzałego standardu XEmbed. Aby temu zaradzić, zainstaluj i uruchom w tle program xembed-sni-proxy, który przetłumaczy je na nowoczesny standard SNI obsługiwany przez ten panel.
-
-Odinstalowanie
-Bash
+```bash
 gnome-extensions disable gnome-panel@user.local
 rm -rf ~/.local/share/gnome-shell/extensions/gnome-panel@user.local
-👏 Podziękowania (Credits)
+```
+
+---
+
+## Jak działa
+
+- Pasek dodawany do Main.layoutManager  
+- Klasyczny: affectsStruts  
+- Pływający: disable-unredirect  
+- Auto-hide: targetBox + strefy  
+- Fullscreen: brak reakcji  
+- Overview: pasek widoczny  
+
+---
+
+## 👏 Podziękowania (Credits)
+
 Ten projekt czerpie garściami z pracy społeczności Open Source. Chciałbym z tego miejsca podziękować twórcom wspaniałych rozszerzeń:
 
-Dash to Panel – logika inteligentnego ukrywania paska (Intellihide) oraz mechanizm wykrywania kolizji z oknami (Proximity) w tym projekcie bazują bezpośrednio na zmodyfikowanym kodzie źródłowym Dash to Panel.
+* **[Dash to Panel](https://github.com/home-sweet-gnome/dash-to-panel)** – logika inteligentnego ukrywania paska (Intellihide) oraz mechanizm wykrywania kolizji z oknami (Proximity) w tym projekcie bazują bezpośrednio na zmodyfikowanym kodzie źródłowym Dash to Panel.
+* **[Dash to Dock](https://github.com/micheleg/dash-to-dock)** – za ogromną inspirację do stworzenia trybu pływającego (Float) oraz ogólnego podejścia do zarządzania paskiem zadań w środowisku GNOME.
+* **[AppIndicator and KStatusNotifierItem Support](https://github.com/ubuntu/gnome-shell-extension-appindicator)** – kod tego oficjalnego rozszerzenia posłużył jako nieocenione źródło wiedzy i inspiracji przy budowie naszego modułu tacy systemowej.
+---
 
-Dash to Dock – za ogromną inspirację do stworzenia trybu pływającego (Float) oraz ogólnego podejścia do zarządzania paskiem zadań w środowisku GNOME.
+## Licencja
 
-AppIndicator and KStatusNotifierItem Support – kod tego oficjalnego rozszerzenia posłużył jako nieocenione źródło wiedzy i inspiracji przy budowie naszego modułu tacy systemowej.
-
-Licencja
 GPL-2.0-or-later
