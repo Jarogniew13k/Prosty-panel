@@ -1,4 +1,4 @@
-// Prosty Panel — floatpanel.js (Zabezpieczone śledzenie okien Meta.Window)
+// Prosty Panel — floatpanel.js (Zoptymalizowane: agresywne chowanie Main.panel.hide - FIX PRZEŁĄCZANIA TRYBÓW)
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
@@ -30,18 +30,18 @@ export class FloatPanel {
         this._checkDebounceId = 0;
         this._newWinRecheckId = 0;
         
-        // 🟢 FIX: Używamy niezawodnej Mapy do okien, tak jak w intellihide
         this._trackedWindows = new Map(); 
     }
 
     enable() {
-        this._hideTopPanel();
         const mon = Main.layoutManager.primaryMonitor;
-
         this._disableUnredirect();
 
+        // 🟢 FIX: Najpierw tworzymy pasek, potem go ukrywamy i wiążemy sygnały.
         this._bar = new BottomTaskbar(this._settings);
         this._bar.add_style_class_name('mode-floating');
+        
+        this._hideTopPanel();
 
         Main.layoutManager.addTopChrome(this._bar, { affectsStruts: false, trackFullscreen: false });
 
@@ -97,15 +97,17 @@ export class FloatPanel {
             this._strutWidget = null;
         }
         
+        // 🟢 FIX: Najpierw przywracamy oryginalne panele (rozłączając sygnały od this._bar),
+        // A DOPIERO POTEM niszczymy this._bar. Tak samo jak jest to zrobione w classicpanel.js.
+        this._enableUnredirect();
+        this._showTopPanel();
+        
         if (this._bar) { 
             if (typeof this._bar._cleanup === 'function') this._bar._cleanup();
             Main.layoutManager.removeChrome(this._bar); 
             this._bar.destroy(); 
             this._bar = null;
         }
-        
-        this._enableUnredirect();
-        this._showTopPanel();
     }
 
     _enableStaticTracker() {
@@ -146,7 +148,6 @@ export class FloatPanel {
         const ws = global.workspace_manager.get_active_workspace();
         const current = new Set(ws.list_windows());
 
-        // 🟢 FIX: Bezpieczna iteracja po mapie
         for (const [win, ids] of this._trackedWindows) {
             if (!current.has(win)) {
                 this._untrackWindow(win, ids);
@@ -179,7 +180,6 @@ export class FloatPanel {
         });
         ids.push(unmanagedId);
 
-        // 🟢 FIX: Zapisujemy tablicę ID do mapy
         this._trackedWindows.set(win, ids);
     }
 
@@ -317,6 +317,10 @@ export class FloatPanel {
         Main.panel.opacity = 0; 
         Main.layoutManager.panelBox.opacity = 0;
         
+        // 🟢 AGRESYWNE UKRYWANIE
+        Main.panel.hide();
+        Main.layoutManager.panelBox.hide();
+        
         const panelHeight = Main.layoutManager.panelBox.height || 40;
         Main.layoutManager.panelBox.translation_y = -panelHeight;
         
@@ -327,17 +331,31 @@ export class FloatPanel {
             Main.layoutManager._queueUpdateRegions();
         }
         
-        if (Main.overview?.dash) {
+        if (Main.overview?.dash) { 
             this._dashOrigOpacity = Main.overview.dash.opacity;
             this._dashOrigReactive = Main.overview.dash.reactive;
+            
             Main.overview.dash.opacity = 0;
             Main.overview.dash.reactive = false;
+            Main.overview.dash.hide();
+
+            Main.overview.connectObject('showing', () => {
+                if (Main.overview?.dash) {
+                    Main.overview.dash.opacity = 0;
+                    Main.overview.dash.reactive = false;
+                    Main.overview.dash.hide();
+                }
+            }, this._bar);
         }
     }
 
     _showTopPanel() {
         Main.panel.opacity = 255; 
         Main.layoutManager.panelBox.opacity = 255;
+        
+        // 🟢 PRZYWRACANIE AGRESYWNEGO UKRYCIA
+        Main.panel.show();
+        Main.layoutManager.panelBox.show();
         Main.layoutManager.panelBox.translation_y = 0;
         
         if (this._oldAffectsStruts !== undefined) {
@@ -348,10 +366,14 @@ export class FloatPanel {
         }
         
         if (Main.overview?.dash) {
+            Main.overview.disconnectObject(this._bar);
+
             if (this._dashOrigOpacity !== undefined) Main.overview.dash.opacity = this._dashOrigOpacity;
             if (this._dashOrigReactive !== undefined) Main.overview.dash.reactive = this._dashOrigReactive;
             this._dashOrigOpacity = undefined;
             this._dashOrigReactive = undefined;
+            
+            Main.overview.dash.show();
         }
     }
 

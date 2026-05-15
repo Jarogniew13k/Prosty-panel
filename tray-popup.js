@@ -206,8 +206,6 @@ export function buildTrayArrow(host) {
 }
 
 async function _buildAndOpenDBusMenu(item, sourceActor, host, popup) {
-    // Zabezpieczenie przed race condition: async funkcja mogłaby być wywołana dwukrotnie
-    // przy szybkim podwójnym kliknięciu zanim pierwsze wywołanie dobiegnie końca.
     if (host._dbusMenuPending) return;
     host._dbusMenuPending = true;
 
@@ -222,7 +220,7 @@ async function _buildAndOpenDBusMenu(item, sourceActor, host, popup) {
             item.menuProxy.call(
                 'GetLayout', new GLib.Variant('(iias)', [0, -1, []]),
                 Gio.DBusCallFlags.NONE, 
-                500, // 🟢 FIX: Skrócenie czasu oczekiwania do zaledwie 500 ms (ułamek sekundy zamiast 25 sekund)!
+                500, 
                 null,
                 (p, r) => {
                     try { resolve(p.call_finish(r)); } catch(e) { reject(e); }
@@ -313,7 +311,6 @@ async function _buildAndOpenDBusMenu(item, sourceActor, host, popup) {
         menu.open(true);
 
     } catch (e) {
-        // Zepsute Electronowe Menu błyskawicznie wejdzie tutaj i poprawnie włączy awaryjne ContextMenu
         closeTrayPopup(host);
         const [mouseX, mouseY] = sourceActor.get_transformed_position();
         item.contextMenu(Math.floor(mouseX), Math.floor(mouseY));
@@ -327,7 +324,13 @@ export function closeTrayPopup(host) {
     host._trayPopupIsOpen = false;
 
     if (host._intellihide) host._intellihide.unblock();
-    if (host._trayPopupStageId) { global.stage.disconnect(host._trayPopupStageId); host._trayPopupStageId = 0; }
+    
+    // Zabezpieczenie global.stage.disconnect w bloku try..catch
+    if (host._trayPopupStageId) { 
+        try { global.stage.disconnect(host._trayPopupStageId); } catch(e) {}
+        host._trayPopupStageId = 0; 
+    }
+    
     if (host._activeAppMenu) { host._activeAppMenu.close(); }
 
     host._trayPopup.ease({

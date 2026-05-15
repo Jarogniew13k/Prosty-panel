@@ -192,6 +192,9 @@ export function buildAppsList(host) {
         if (_rebuildDebounceId) { GLib.source_remove(_rebuildDebounceId); _rebuildDebounceId = 0; }
         for (const [id, btn] of host._buttons.entries()) {
             if (typeof btn._cleanup === 'function') btn._cleanup();
+            // 🟢 DODANE: Bezpieczne niszczenie aktora po wywołaniu cleanup
+            try { btn.remove_all_transitions(); } catch(e) {}
+            try { btn.destroy(); } catch(e) {}
         }
         host._buttons.clear();
     };

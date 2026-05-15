@@ -1,4 +1,4 @@
-// Prosty Panel — classicpanel.js (v2.5 GNOME 49 Ready)
+// Prosty Panel — classicpanel.js (Zoptymalizowane: agresywne chowanie Main.panel.hide - FIX PRZEŁĄCZANIA TRYBÓW)
 
 import GObject from 'gi://GObject';
 import St      from 'gi://St';
@@ -172,10 +172,9 @@ export const BottomTaskbar = GObject.registerClass({
 
         if (this._extraStatusCleanup) this._extraStatusCleanup();
         
-        // Jawne zniszczenie popupu tacki
         if (this._trayPopup) {
             if (this._trayPopupStageId) { 
-                global.stage.disconnect(this._trayPopupStageId); 
+                try { global.stage.disconnect(this._trayPopupStageId); } catch(e) {}
                 this._trayPopupStageId = 0; 
             }
             this._trayPopup.remove_all_transitions();
@@ -227,8 +226,10 @@ export class ClassicPanel {
     }
 
     enable() {
-        this._hideTopPanel();
+        // 🟢 FIX: Najpierw tworzymy pasek, potem go ukrywamy i wiążemy sygnały.
         this._bar = new BottomTaskbar(this._settings);
+        this._hideTopPanel();
+        
         Main.layoutManager.addChrome(this._bar, { affectsStruts: true, trackFullscreen: true });
         this._reposition();
         
@@ -262,6 +263,9 @@ export class ClassicPanel {
         Main.panel.opacity = 0; 
         Main.layoutManager.panelBox.opacity = 0;
         
+        Main.panel.hide();
+        Main.layoutManager.panelBox.hide();
+        
         const panelHeight = Main.layoutManager.panelBox.height || 40;
         Main.layoutManager.panelBox.translation_y = -panelHeight;
         
@@ -275,14 +279,27 @@ export class ClassicPanel {
         if (Main.overview?.dash) { 
             this._dashOrigOpacity = Main.overview.dash.opacity;
             this._dashOrigReactive = Main.overview.dash.reactive;
+            
             Main.overview.dash.opacity = 0;
             Main.overview.dash.reactive = false;
+            Main.overview.dash.hide();
+
+            Main.overview.connectObject('showing', () => {
+                if (Main.overview?.dash) {
+                    Main.overview.dash.opacity = 0;
+                    Main.overview.dash.reactive = false;
+                    Main.overview.dash.hide();
+                }
+            }, this._bar);
         }
     }
 
     _showTopPanel() {
         Main.panel.opacity = 255; 
         Main.layoutManager.panelBox.opacity = 255;
+        
+        Main.panel.show();
+        Main.layoutManager.panelBox.show();
         Main.layoutManager.panelBox.translation_y = 0;
 
         if (this._oldAffectsStruts !== undefined) {
@@ -293,10 +310,14 @@ export class ClassicPanel {
         }
 
         if (Main.overview?.dash) {
+            Main.overview.disconnectObject(this._bar);
+
             if (this._dashOrigOpacity !== undefined) Main.overview.dash.opacity = this._dashOrigOpacity;
             if (this._dashOrigReactive !== undefined) Main.overview.dash.reactive = this._dashOrigReactive;
             this._dashOrigOpacity = undefined;
             this._dashOrigReactive = undefined;
+            
+            Main.overview.dash.show();
         }
     }
 

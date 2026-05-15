@@ -13,7 +13,7 @@ const ANIMATION_TIME          = 150;
 const HIDE_DELAY              = 400;
 const SHOW_DELAY_MS           = 0;
 const EDGE_THRESHOLD          = 1;
-const HOVER_EXTEND_HORIZONTAL = 7;
+const HOVER_EXTEND_HORIZONTAL = 8;
 const HOVER_EXTEND_BOTTOM     = 10;
 const HOVER_EXTEND_TOP        = 5;
 
@@ -192,10 +192,7 @@ export const Intellihide = GObject.registerClass({
         if (!ids) ids = this._trackedWindows.get(win) || [];
         for (const id of ids) {
             try { 
-                // KLUCZOWE: Sprawdzenie, czy obiekt C wciąż istnieje przed odłączeniem
-                if (GObject.signal_handler_is_connected(win, id)) {
-                    win.disconnect(id); 
-                }
+                win.disconnect(id); 
             } catch (e) {}
         }
     }

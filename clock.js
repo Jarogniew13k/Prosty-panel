@@ -26,7 +26,7 @@ export function buildClock(host) {
     const timeLabel = new St.Label({ style_class : 'tb-clock-time', y_align : Clutter.ActorAlign.CENTER });
 
     const notifDot = new St.Widget({
-        style_class : 'tb-notif-dot', width : 8, height : 8, opacity : 0,
+        style_class : 'tb-notif-dot', width : 8, height : 8, visible : false,
         y_align : Clutter.ActorAlign.CENTER, x_align : Clutter.ActorAlign.CENTER, style : 'margin-right: 4px;',
     });
 
@@ -37,7 +37,7 @@ export function buildClock(host) {
     clock.connect('clicked', () => {
         if (!host._ready) return;
         openMenuAboveBar(Main.panel.statusArea.dateMenu?.menu, clock, 2);
-        notifDot.opacity = 0;
+        notifDot.visible = false;
     });
 
     let wallClock = null;
@@ -79,7 +79,7 @@ export function buildClock(host) {
             if (host._panelDestroyed) return;
             let count = 0;
             tray.getSources().forEach(src => { count += (src.count || 0); });
-            notifDot.opacity = (count > 0) ? 255 : 0;
+            notifDot.visible = (count > 0);
         };
 
         const onSourceAdded = (t, src) => {
